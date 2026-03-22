@@ -57,7 +57,7 @@ def rating_series_chart(df: pd.DataFrame) -> go.Figure:
     """График среднего рейтинга по дням."""
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df["date"], y=df["val"],
+        x=df["date"], y=df["avg_rating"],
         mode="lines+markers",
         name="Ср. оценка",
         line=dict(color=WARNING, width=2),
@@ -68,11 +68,18 @@ def rating_series_chart(df: pd.DataFrame) -> go.Figure:
     return _apply_template(fig)
 
 
-def rating_distribution_chart(dist: dict) -> go.Figure:
-    """Распределение оценок 1–5."""
-    labels = [str(k) for k in sorted(dist.keys())]
-    values = [dist[int(k)] for k in labels]
-    colors = [DANGER, WARNING, WARNING, SUCCESS, SUCCESS]
+def rating_distribution_chart(dist) -> go.Figure:
+    """Распределение оценок 1–5. dist — DataFrame с колонками rating, count."""
+    import pandas as pd
+    if isinstance(dist, pd.DataFrame):
+        df_dist = dist.sort_values("rating")
+        labels = df_dist["rating"].astype(str).tolist()
+        values = df_dist["count"].tolist()
+    else:
+        labels = [str(k) for k in sorted(dist.keys())]
+        values = [dist[int(k)] for k in labels]
+    color_map = {"1": DANGER, "2": DANGER, "3": WARNING, "4": SUCCESS, "5": SUCCESS}
+    colors = [color_map.get(l, PRIMARY) for l in labels]
     fig = go.Figure(go.Bar(
         x=labels, y=values,
         marker_color=colors,
@@ -84,7 +91,7 @@ def rating_distribution_chart(dist: dict) -> go.Figure:
 
 def plan_distribution_chart(df: pd.DataFrame) -> go.Figure:
     """Pie-chart по тарифным планам."""
-    fig = px.pie(df, names="plan", values="cnt", title="Распределение по тарифам",
+    fig = px.pie(df, names="subscription_plan", values="count", title="Распределение по тарифам",
                  color_discrete_sequence=[PRIMARY, SECONDARY, SUCCESS, WARNING, DANGER, "#06B6D4"])
     fig.update_layout(**PLOTLY_TEMPLATE["layout"])
     return fig
@@ -93,9 +100,9 @@ def plan_distribution_chart(df: pd.DataFrame) -> go.Figure:
 def media_type_chart(df: pd.DataFrame) -> go.Figure:
     """Столбчатый график audio vs video."""
     fig = go.Figure(go.Bar(
-        x=df["media_type"], y=df["cnt"],
+        x=df["media_type"], y=df["count"],
         marker_color=[PRIMARY, SECONDARY],
-        text=df["cnt"], textposition="outside"
+        text=df["count"], textposition="outside"
     ))
     fig.update_layout(title="Тип медиафайлов (audio / video)", xaxis_title="Тип", yaxis_title="Кол-во")
     return _apply_template(fig)
@@ -103,9 +110,9 @@ def media_type_chart(df: pd.DataFrame) -> go.Figure:
 
 def utm_chart(df: pd.DataFrame) -> go.Figure:
     """Горизонтальный bar по UTM-источникам."""
-    df_sorted = df.sort_values("cnt", ascending=True).tail(10)
+    df_sorted = df.sort_values("users", ascending=True).tail(10)
     fig = go.Figure(go.Bar(
-        x=df_sorted["cnt"], y=df_sorted["utm_source"].astype(str),
+        x=df_sorted["users"], y=df_sorted["utm_source"].astype(str),
         orientation="h",
         marker_color=PRIMARY
     ))

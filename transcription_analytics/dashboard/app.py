@@ -134,7 +134,7 @@ def load_media_type(days):
 
 @st.cache_data(ttl=3600)
 def load_utm(days):
-    return by_utm("registrations", days)
+    return by_utm(days)
 
 
 @st.cache_data(ttl=3600)
@@ -162,12 +162,12 @@ with tabs[0]:
     with col1:
         df_dau = load_dau_series(period_days)
         if not df_dau.empty:
-            st.plotly_chart(dau_chart(df_dau), use_container_width=True)
+            st.plotly_chart(dau_chart(df_dau), use_container_width=True, key="dau_overview")
 
     with col2:
         df_rev = load_revenue_series(period_days)
         if not df_rev.empty:
-            st.plotly_chart(revenue_chart(df_rev), use_container_width=True)
+            st.plotly_chart(revenue_chart(df_rev), use_container_width=True, key="rev_overview")
 
     render_daily_table(period_days)
 
@@ -179,18 +179,18 @@ with tabs[1]:
 
     df_dau2 = load_dau_series(period_days)
     if not df_dau2.empty:
-        st.plotly_chart(dau_chart(df_dau2), use_container_width=True)
+        st.plotly_chart(dau_chart(df_dau2), use_container_width=True, key="dau_users")
 
     col1, col2 = st.columns(2)
     with col1:
         df_plan = load_plan_dist()
         if not df_plan.empty:
-            st.plotly_chart(plan_distribution_chart(df_plan), use_container_width=True)
+            st.plotly_chart(plan_distribution_chart(df_plan), use_container_width=True, key="plan_dist")
 
     with col2:
         df_utm_data = load_utm(period_days)
         if not df_utm_data.empty:
-            st.plotly_chart(utm_chart(df_utm_data), use_container_width=True)
+            st.plotly_chart(utm_chart(df_utm_data), use_container_width=True, key="utm_chart")
 
     st.subheader("Воронка лендинга")
     try:
@@ -204,7 +204,7 @@ with tabs[1]:
             ))
             fig.update_layout(**{"paper_bgcolor": "#0F0F1A", "plot_bgcolor": "#1A1A2E",
                                   "font": {"color": "#E2E8F0"}, "title": "Конверсия лендинга"})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="funnel_chart")
     except Exception:
         pass
 
@@ -225,7 +225,7 @@ with tabs[2]:
 
     df_rev2 = load_revenue_series(period_days)
     if not df_rev2.empty:
-        st.plotly_chart(revenue_chart(df_rev2), use_container_width=True)
+        st.plotly_chart(revenue_chart(df_rev2), use_container_width=True, key="rev_finance")
 
 
 # ─── Tab: Продукт ─────────────────────────────────────────────────────────────
@@ -236,12 +236,12 @@ with tabs[3]:
     df_tr = load_transcriptions_series(period_days)
     with col1:
         if not df_tr.empty:
-            st.plotly_chart(transcriptions_chart(df_tr), use_container_width=True)
+            st.plotly_chart(transcriptions_chart(df_tr), use_container_width=True, key="tr_chart")
 
     with col2:
         df_media = load_media_type(period_days)
         if not df_media.empty:
-            st.plotly_chart(media_type_chart(df_media), use_container_width=True)
+            st.plotly_chart(media_type_chart(df_media), use_container_width=True, key="media_chart")
 
     st.divider()
     st.subheader("Качество (оценки)")
@@ -250,12 +250,12 @@ with tabs[3]:
     df_rating_series = load_rating_series(period_days)
     with col3:
         if not df_rating_series.empty:
-            st.plotly_chart(rating_series_chart(df_rating_series), use_container_width=True)
+            st.plotly_chart(rating_series_chart(df_rating_series), use_container_width=True, key="rating_series")
 
     df_dist = load_rating_distribution(period_days)
     with col4:
-        if df_dist:
-            st.plotly_chart(rating_distribution_chart(df_dist), use_container_width=True)
+        if df_dist is not None and len(df_dist) > 0:
+            st.plotly_chart(rating_distribution_chart(df_dist), use_container_width=True, key="rating_dist")
 
 
 # ─── Tab: Когорты ─────────────────────────────────────────────────────────────
@@ -264,7 +264,7 @@ with tabs[4]:
     try:
         pivot = load_weekly_cohorts()
         if not pivot.empty:
-            st.plotly_chart(cohort_heatmap(pivot), use_container_width=True)
+            st.plotly_chart(cohort_heatmap(pivot), use_container_width=True, key="cohort_heatmap")
             render_cohort_table(pivot, "Retention по неделям (%)")
         else:
             st.info("Нет данных для когортного анализа")

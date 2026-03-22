@@ -32,7 +32,7 @@ def get_daily_summary(days: int = 30) -> pd.DataFrame:
         LEFT JOIN (
             SELECT DATE(tr.created_at) AS date,
                    COUNT(*) AS transcriptions,
-                   SUM(tr.duration_seconds / 60.0) AS minutes
+                   SUM(tr.duration / 60.0) AS minutes
             FROM transcriptions tr JOIN users u2 ON u2.id = tr.user_id
             WHERE COALESCE(u2.is_test, '0') != '1'
             GROUP BY DATE(tr.created_at)
@@ -75,10 +75,7 @@ def render_cohort_table(pivot: pd.DataFrame, title: str = "Когортная т
     if pivot.empty:
         st.info("Нет данных для когортного анализа")
         return
-    styled = pivot.style.format("{:.1f}%", na_rep="-").background_gradient(
-        cmap="Blues", axis=None, vmin=0, vmax=100
-    )
-    st.dataframe(styled, use_container_width=True)
+    st.dataframe(pivot.style.format("{:.1f}%", na_rep="-"), use_container_width=True)
 
 
 def render_segmentation_table(df: pd.DataFrame, title: str):
