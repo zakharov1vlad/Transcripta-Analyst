@@ -6,164 +6,159 @@
 ## Стек
 - **Python** — основной язык
 - **MySQL** — БД сервиса, доступ через SSH-туннель
-- **Streamlit** — интерактивный дашборд (синий + фиолетовый цвет, открытый доступ)
+- **Streamlit** — интерактивный дашборд (синий + фиолетовый цвет, порт 8501)
 - **Telegram Bot** — уведомления
 - **Claude API** (claude-opus-4-6) — генерация гипотез и инсайтов
 - **Хостинг** — Beget VPS (без Docker, МВП)
 
 ## Инфраструктура
-- Beget VPS (SSH-доступ)
-- MySQL через SSH-туннель (host: 127.0.0.1, port: 3306)
-- SSH-ключи уже сгенерированы: `id_ed25519` / `id_ed25519.pub`
-- Публичный ключ нужно добавить в панели Beget → SSH-ключи
+- Beget VPS: SSH host 93.189.229.156, user=vlad
+- MySQL: host=127.0.0.1, port=3306, db=transcription_ai, user=root, password=root
+- SSH-туннель: `ssh -fN mysql-tunnel` (alias в ~/.ssh/config)
+- ~/.ssh/config: Host mysql-tunnel → 93.189.229.156, User vlad, IdentityFile ~/.ssh/transcripta_analyst
+
+## Запуск (локально)
+```bash
+cd transcription_analytics
+ssh -fN mysql-tunnel          # поднять SSH-туннель к БД
+PYTHONPATH=. python3 -m streamlit run dashboard/app.py   # дашборд на :8501
+PYTHONPATH=. python3 main.py --bot                        # только планировщик
+PYTHONPATH=. python3 main.py                              # дашборд + планировщик
+```
 
 ## Telegram
 - Бот уже создан (токен в .env)
 - Chat ID группы аналитики: `-5172505765`
-- Расписание отправки: **раз в час** (основные метрики за текущий день)
-- Гипотезы: **раз в день** (генерирует Claude как лучший CPO)
+- **Каждый час в :00** — сводка метрик за текущий день
+- **Каждый день в 09:00 МСК** — аномалии + гипотезы от Claude
 
-## Метрики (все продуктовые)
-### Посещения и активность
-- DAU, MAU, WAU
-- Retention (Day 1, 7, 30)
-- Churn rate
-- Новые регистрации
-
-### Финансы
-- ARPPU, LTV
-- Выручка (день / месяц / всё время)
-- Покупки (количество, сумма)
-
-### Продукт
-- Средняя оценка пользователей
-- Использование транскрибации (кол-во файлов, минут)
-
-### Срезы
-- По дню / месяцу / всему периоду
-- Когортный анализ (weekly + monthly)
-- По плану подписки / UTM / типу
+## GitHub
+- Репозиторий: https://github.com/zakharov1vlad/Transcripta-Analyst
+- Push через HTTPS + Personal Access Token (repo scope)
+- `git remote set-url origin https://zakharov1vlad:TOKEN@github.com/zakharov1vlad/Transcripta-Analyst.git`
 
 ## Важные правила БД
-- Таблица `users` имеет поле `is_test = '1'` — таких пользователей **исключать из всей аналитики**
-- БД называется `transcription_ai`
+- `is_test` = NULL (обычный пользователь) или '1' (тест) — **везде фильтровать: `COALESCE(is_test, '0') != '1'`**
+- БД: `transcription_ai`
+- Колонка длительности транскрипции: `duration` (секунды), не `duration_seconds`
+- `get_plan_distribution()` возвращает колонки: `subscription_plan`, `count`
+- `by_utm(days)` возвращает колонки: `utm_source`, `users`, `transcriptions`, `revenue`
+- `get_media_type_split()` возвращает колонки: `media_type`, `count`
+- `get_reviews_series()` возвращает колонки: `date`, `count`, `avg_rating`
+- `get_rating_distribution()` возвращает DataFrame с колонками: `rating`, `count`
 
 ## Схема БД (transcription_ai)
 
 ### users
-Пользователи, подписки, лимиты, UTM, платежи.
-- `id` PK, `email` UNI, `username`, `name`
-- `subscription_plan` (Free / платные планы), `subscription_expires_at`, `subscription_type` (monthly/yearly)
-- `transcriptions_remaining` (int), `transcriptions_used` (decimal), `transcriptions_completed` (int)
+- `id`, `email`, `username`, `name`
+- `subscription_plan`, `subscription_expires_at`, `subscription_type` (monthly/yearly)
+- `transcriptions_remaining`, `transcriptions_used`, `transcriptions_completed`
 - `first_purchase_completed`, `subscription_auto_renewal`, `manual_subscription`
 - `yookassa_payment_method_id`, `last_payment_date`, `failed_payment_count`
-- `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`
-- `referral_code`, `google_id`, `email_verified`
-- `created_at`, `updated_at`
-- `is_test` — **фильтровать: WHERE is_test != '1'**
+- `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `referral_code`
+- `google_id`, `email_verified`, `created_at`, `updated_at`
+- `is_test` — NULL (реальный) или '1' (тест)
 - `first_payment_discount_used`, `auto_renewal_disabled_at`, `transcription_retention_days`
 - `card_mask`, `avatar_base64`
 
 ### transcriptions
-Расшифровки аудио/видео.
-- `id` PK, `user_id` FK→users
-- `filename`, `transcription` (JSON), `audio_format`, `audio_size`, `media_type` (audio/video)
+- `id`, `user_id`, `filename`, `transcription` (JSON)
+- `audio_format`, `audio_size`, `media_type` (audio/video)
 - `duration` (сек), `transcribed_duration_seconds`
-- `summary`, `participants`, `tags`
-- `project_id` FK→projects
-- `s3_media_url`, `share_token` UNI, `is_shared`, `shared_at`
-- `from_landing_funnel` (загрузка с лендинга до регистрации)
-- `full_transcript_paid` (апсейл с лендинга)
-- `created_at`
+- `summary`, `participants`, `tags`, `project_id`
+- `s3_media_url`, `share_token`, `is_shared`, `shared_at`
+- `from_landing_funnel`, `full_transcript_paid`, `created_at`
 
 ### projects
-Проекты для группировки транскрипций.
-- `id` PK, `user_id` FK→users, `name`, `created_at`
+- `id`, `user_id`, `name`, `created_at`
 
 ### active_subscriptions
-Активные подписки.
-- `id` PK, `user_id` FK→users
-- `plan_name`, `transcriptions_remaining`, `transcriptions_total`
-- `start_date`, `end_date`, `subscription_type` (monthly/yearly)
-- `auto_renewal`, `payment_method_id`
-- `created_at`, `updated_at`
+- `id`, `user_id`, `plan_name`
+- `transcriptions_remaining`, `transcriptions_total`
+- `start_date`, `end_date`, `subscription_type`
+- `auto_renewal`, `payment_method_id`, `created_at`, `updated_at`
 
 ### payment_history
-История платежей (YooKassa).
-- `id` PK, `user_id` FK→users
-- `yookassa_payment_id`, `plan_name`, `amount`, `currency` (RUB)
-- `status`, `payment_method_type`, `payment_method_id`
-- `is_autopay`, `metadata` (JSON)
-- `created_at`
+- `id`, `user_id`, `yookassa_payment_id`, `plan_name`
+- `amount`, `currency` (RUB), `status`, `payment_method_type`, `payment_method_id`
+- `is_autopay`, `metadata` (JSON), `created_at`
 
 ### future_subscriptions
-Очередь подписок к активации.
-- `id` PK, `user_id`, `plan_name`, `payment_history_id`, `activation_date`, `created_at`
+- `id`, `user_id`, `plan_name`, `payment_history_id`, `activation_date`, `created_at`
 
 ### reviews
-Отзывы к транскрипциям (рейтинг 1–5).
-- `id` PK, `user_id` FK→users, `transcription_id` FK→transcriptions
+- `id`, `user_id`, `user_email`, `transcription_id`
 - `rating` (1–5), `review_text`, `created_at`, `updated_at`
-- UNIQUE (user_id, transcription_id)
 
 ### feedbacks
-Общая обратная связь.
-- `id` PK, `user_id` FK→users, `email` UNI, `user_name`
+- `id`, `user_id`, `email`, `user_name`
 - `rating` (1–5), `title`, `message`
-- `likes` (JSON), `improvements` (JSON), `wishes` (JSON)
-- `created_at`, `ip_address`, `user_agent`
+- `likes`, `improvements`, `wishes` (JSON)
+- `created_at`, `updated_at`, `ip_address`, `user_agent`
 
 ### chat_history
-История чата с ИИ по транскрипции.
-- `id` PK, `user_id`, `transcription_id`
-- `message` (вопрос), `response` (ответ ИИ), `created_at`
+- `id`, `user_id`, `transcription_id`, `message`, `response`, `created_at`
 
 ### ai_reports
-AI-отчёты по транскрипциям.
-- `id` PK, `transcription_id`, `user_id`
+- `id`, `transcription_id`, `user_id`
 - `style_key`, `style_name`, `category`, `content`
 - `tokens_used`, `generation_time_ms`
-- UNIQUE (transcription_id, user_id, style_key)
 
 ### user_discounts
-Скидки пользователей.
-- `id` PK, `user_id`
-- `discount_type` (new_user_50 / referral_50 / promo_code)
-- `discount_value`, `used_at`, `expires_at`, `promo_code`
-- UNIQUE (user_id, discount_type)
+- `id`, `user_id`, `discount_type`, `discount_value`
+- `used_at`, `expires_at`, `promo_code`
 
-## Структура проекта (запланированная)
+## Структура проекта
 ```
 transcription_analytics/
-├── config/         # настройки, SQL-запросы
-├── db/             # подключение MySQL (SQLAlchemy + пул)
-├── metrics/        # все метрики
-├── cohorts/        # когортный анализ
-├── segmentation/   # срезы
-├── anomaly/        # детектор аномалий (Z-score + IQR)
-├── ai_agent/       # Claude: инсайты и гипотезы
-├── dashboard/      # Streamlit дашборд
-├── bot/            # Telegram бот
-└── scheduler/      # планировщик задач
+├── .env                    # API ключи и доступы к БД (не в git)
+├── requirements.txt
+├── main.py                 # точка входа (--bot = только планировщик)
+├── config/settings.py      # загрузка .env
+├── db/
+│   ├── connection.py       # SQLAlchemy engine
+│   └── queries.py          # fetch_df(), fetch_one()
+├── metrics/
+│   ├── users.py            # DAU, MAU, WAU, churn, retention, plan_distribution
+│   ├── revenue.py          # ARPU, ARPPU, LTV, выручка, покупки
+│   ├── product.py          # транскрипции, медиатип, лендинг, ai_reports, chat
+│   └── satisfaction.py     # рейтинги reviews + feedbacks
+├── cohorts/analysis.py     # weekly/monthly retention pivot
+├── segmentation/slices.py  # by_utm, by_plan, by_subscription_type
+├── anomaly/detector.py     # Z-score + IQR, check_all_metrics()
+├── ai_agent/claude.py      # generate_hypotheses(), save/load JSON
+├── dashboard/
+│   ├── app.py              # Streamlit: 6 вкладок + сайдбар
+│   ├── theme.py            # PRIMARY=#4F46E5, SECONDARY=#7C3AED
+│   └── components/
+│       ├── overview.py     # KPI-карточки
+│       ├── charts.py       # Plotly графики
+│       ├── tables.py       # таблицы по дням + когорты
+│       └── hypotheses.py   # таблица гипотез
+├── bot/
+│   ├── hourly_report.py    # метрики за текущий день
+│   └── daily_report.py     # аномалии + гипотезы Claude
+└── scheduler/jobs.py       # APScheduler: hourly + 09:00 daily
 ```
 
 ## Статус проекта
 - [x] Требования собраны
 - [x] Стек выбран
-- [x] SSH-ключи сгенерированы
-- [ ] Схема БД — **нужно прислать повторно** (не сохранилась)
-- [ ] SSH доступы (host, user, password)
-- [ ] MySQL доступы (db name, user, password)
-- [ ] Код написан
-- [ ] Деплой на Beget
+- [x] SSH-туннель настроен
+- [x] БД подключена (1105 реальных пользователей)
+- [x] Все метрики написаны и работают
+- [x] Streamlit дашборд (6 вкладок, Plotly)
+- [x] Telegram бот (hourly + daily)
+- [x] Планировщик APScheduler
+- [x] Код запушен на GitHub
+- [ ] Деплой на Beget VPS (постоянная работа)
 
-## Credentials (в .env, не хранить в коде)
+## Credentials (в .env)
 - `ANTHROPIC_API_KEY` — есть
 - `TELEGRAM_BOT_TOKEN` — есть
 - `TELEGRAM_CHAT_ID=-5172505765`
-- `SSH_HOST` — нужно
-- `SSH_USER` — нужно
-- `SSH_PASSWORD` — нужно
-- `DB_NAME` — нужно
-- `DB_USER` — нужно
-- `DB_PASSWORD` — нужно
+- `DB_HOST=127.0.0.1`
+- `DB_PORT=3306`
+- `DB_USER=root`
+- `DB_PASSWORD=root`
+- `DB_NAME=transcription_ai`
