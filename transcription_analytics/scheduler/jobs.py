@@ -17,10 +17,10 @@ def start_scheduler() -> BackgroundScheduler:
         misfire_grace_time=300
     )
 
-    # Ежедневный отчёт с гипотезами в 09:00
+    # Ежедневный отчёт с гипотезами в 00:00 МСК (итоги дня)
     scheduler.add_job(
         _run_daily,
-        trigger=CronTrigger(hour=9, minute=0),
+        trigger=CronTrigger(hour=0, minute=0),
         id="daily_report",
         name="Daily Claude Hypotheses Report",
         misfire_grace_time=600

@@ -6,48 +6,58 @@ from config.settings import ANTHROPIC_API_KEY, HYPOTHESES_FILE
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
+
 def generate_hypotheses(metrics_summary: dict, anomalies: List[Dict]) -> List[Dict]:
-    """Генерирует продуктовые гипотезы через Claude как лучший CPO."""
+    """Генерирует продуктовые гипотезы и инсайты через Claude как лучший CPO."""
 
     anomalies_text = ""
     if anomalies:
         anomalies_text = "\n\nОБНАРУЖЕННЫЕ АНОМАЛИИ:\n"
         for a in anomalies:
-            anomalies_text += f"- {a['metric']}: {a['value']} (ожидалось ~{a['expected']}, {a['direction']} нормы, z-score={a['z_score']})\n"
+            anomalies_text += (
+                f"- {a['metric']}: {a['value']} "
+                f"(ожидалось ~{a['expected']}, {a['direction']} нормы, z-score={a['z_score']})\n"
+            )
 
-    prompt = f"""Ты — лучший CPO (Chief Product Officer) SaaS-сервиса транскрибации аудио и видео.
+    prompt = f"""Ты — опытный CPO SaaS-сервиса транскрибации аудио и видео для бизнеса и частных пользователей.
 
-Вот текущие продуктовые метрики за сегодня:
+Вот итоговые метрики за сегодня:
 {json.dumps(metrics_summary, ensure_ascii=False, indent=2)}
 {anomalies_text}
 
-На основе этих данных сгенерируй 3-5 конкретных продуктовых гипотез. Для каждой гипотезы укажи:
-1. Проблему/наблюдение из данных
-2. Конкретную гипотезу для проверки
-3. Метрику успеха
-4. Приоритет (high/medium/low)
+Контекст продукта:
+- Пользователи загружают аудио/видео → получают текстовую транскрипцию
+- Монетизация через подписку (месячная/годовая), есть бесплатный план
+- Ключевые метрики роста: конверсия регистрации в подписку, удержание, средняя длительность транскрипции
+- Реклама через Яндекс Директ
 
-Отвечай в формате JSON массива:
+На основе данных за день сгенерируй 5 конкретных продуктовых гипотез или инсайтов.
+Опирайся на реальные цифры из метрик — не выдумывай, делай выводы из того, что видишь.
+
+Для каждой гипотезы:
+1. Что конкретно видно в данных (observation)
+2. Гипотеза — что нужно проверить или изменить (hypothesis)
+3. Как измерить результат (metric)
+4. Приоритет: high (влияет на выручку/retention), medium (UX/рост), low (эксперимент)
+
+Формат ответа — строго JSON массив без лишнего текста:
 [
   {{
-    "title": "Краткое название",
-    "observation": "Что видно в данных",
-    "hypothesis": "Конкретная гипотеза",
-    "metric": "Как измерить успех",
+    "title": "Краткое название до 60 символов",
+    "observation": "Конкретное наблюдение с цифрами из данных",
+    "hypothesis": "Конкретная проверяемая гипотеза с ожидаемым результатом",
+    "metric": "Метрика успеха и целевое значение",
     "priority": "high|medium|low"
   }}
-]
-
-Только JSON, без лишнего текста."""
+]"""
 
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=2000,
+        max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )
 
     text = response.content[0].text.strip()
-    # Убираем markdown если есть
     if text.startswith("```"):
         text = text.split("```")[1]
         if text.startswith("json"):
@@ -55,21 +65,21 @@ def generate_hypotheses(metrics_summary: dict, anomalies: List[Dict]) -> List[Di
 
     hypotheses = json.loads(text)
 
-    # Добавляем timestamp
     for h in hypotheses:
         h["created_at"] = datetime.now().isoformat()
 
-    # Сохраняем
     save_hypotheses(hypotheses)
     return hypotheses
 
+
 def save_hypotheses(new_hypotheses: List[Dict]):
-    """Сохраняет гипотезы в JSON файл (последние 50)."""
+    """Сохраняет гипотезы в JSON файл (последние 100)."""
     existing = load_hypotheses()
     all_hyp = new_hypotheses + existing
-    all_hyp = all_hyp[:50]  # Храним последние 50
+    all_hyp = all_hyp[:100]
     with open(HYPOTHESES_FILE, "w", encoding="utf-8") as f:
         json.dump(all_hyp, f, ensure_ascii=False, indent=2)
+
 
 def load_hypotheses() -> List[Dict]:
     """Загружает сохранённые гипотезы."""
