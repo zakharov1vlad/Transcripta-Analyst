@@ -6,32 +6,32 @@ BASE_FILTER = "WHERE COALESCE(u.is_test, '0') != '1'"
 def get_dau_series(days: int = 30) -> pd.DataFrame:
     """DAU за последние N дней."""
     return fetch_df(f"""
-        SELECT DATE(created_at) as date, COUNT(DISTINCT id) as dau
+        SELECT DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) as date, COUNT(DISTINCT id) as dau
         FROM users
         WHERE COALESCE(is_test, '0') != '1'
-          AND created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        GROUP BY DATE(created_at)
+          AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
+        GROUP BY DATE(CONVERT_TZ(created_at, '+00:00', '+03:00'))
         ORDER BY date
     """, {"days": days})
 
 def get_dau_today() -> int:
     return fetch_one("""
         SELECT COUNT(DISTINCT id) FROM users
-        WHERE COALESCE(is_test, '0') != '1' AND DATE(created_at) = CURDATE()
+        WHERE COALESCE(is_test, '0') != '1' AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
 def get_mau(months_back: int = 1) -> int:
     return fetch_one("""
         SELECT COUNT(DISTINCT id) FROM users
         WHERE COALESCE(is_test, '0') != '1'
-          AND created_at >= DATE_SUB(CURDATE(), INTERVAL :m MONTH)
+          AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :m MONTH)
     """, {"m": months_back}) or 0
 
 def get_wau() -> int:
     return fetch_one("""
         SELECT COUNT(DISTINCT id) FROM users
         WHERE COALESCE(is_test, '0') != '1'
-          AND created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+          AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 7 DAY)
     """) or 0
 
 def get_total_users() -> int:
@@ -39,18 +39,18 @@ def get_total_users() -> int:
 
 def get_registrations_series(days: int = 30) -> pd.DataFrame:
     return fetch_df("""
-        SELECT DATE(created_at) as date, COUNT(*) as registrations
+        SELECT DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) as date, COUNT(*) as registrations
         FROM users
         WHERE COALESCE(is_test, '0') != '1'
-          AND created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        GROUP BY DATE(created_at)
+          AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
+        GROUP BY DATE(CONVERT_TZ(created_at, '+00:00', '+03:00'))
         ORDER BY date
     """, {"days": days})
 
 def get_registrations_today() -> int:
     return fetch_one("""
         SELECT COUNT(*) FROM users
-        WHERE COALESCE(is_test, '0') != '1' AND DATE(created_at) = CURDATE()
+        WHERE COALESCE(is_test, '0') != '1' AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
 def get_active_subscribers() -> int:
@@ -66,7 +66,7 @@ def get_churn_rate(days: int = 30) -> float:
     expired = fetch_one("""
         SELECT COUNT(DISTINCT u.id) FROM users u
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.subscription_expires_at BETWEEN DATE_SUB(CURDATE(), INTERVAL :days DAY) AND CURDATE()
+          AND u.subscription_expires_at BETWEEN DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY) AND DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
           AND u.subscription_plan != 'Free'
     """, {"days": days}) or 0
 
@@ -75,7 +75,7 @@ def get_churn_rate(days: int = 30) -> float:
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND ph.status = 'succeeded'
-          AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0
 
     if expired == 0:
@@ -87,7 +87,7 @@ def get_retention_series() -> pd.DataFrame:
     """Retention Day 1/7/30 по когортам регистрации (последние 60 дней)."""
     return fetch_df("""
         SELECT
-            DATE(u.created_at) as cohort_date,
+            DATE(CONVERT_TZ(u.created_at, '+00:00', '+03:00')) as cohort_date,
             COUNT(DISTINCT u.id) as cohort_size,
             COUNT(DISTINCT CASE
                 WHEN t.created_at >= DATE_ADD(u.created_at, INTERVAL 1 DAY)
@@ -104,8 +104,8 @@ def get_retention_series() -> pd.DataFrame:
         FROM users u
         LEFT JOIN transcriptions t ON t.user_id = u.id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 60 DAY)
-        GROUP BY DATE(u.created_at)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 60 DAY)
+        GROUP BY DATE(CONVERT_TZ(u.created_at, '+00:00', '+03:00'))
         ORDER BY cohort_date
     """)
 

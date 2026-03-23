@@ -13,7 +13,7 @@ def get_weekly_cohorts() -> pd.DataFrame:
         LEFT JOIN transcriptions t ON t.user_id = u.id
             AND t.created_at >= u.created_at
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 12 WEEK)
         GROUP BY cohort_week, activity_week
         ORDER BY cohort_week, activity_week
     """)
@@ -42,7 +42,7 @@ def get_monthly_cohorts() -> pd.DataFrame:
         LEFT JOIN transcriptions t ON t.user_id = u.id
             AND t.created_at >= u.created_at
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 12 MONTH)
         GROUP BY cohort_month, activity_month
         ORDER BY cohort_month, activity_month
     """)
@@ -68,7 +68,7 @@ def get_cohort_revenue() -> pd.DataFrame:
         FROM users u
         JOIN payment_history ph ON ph.user_id = u.id
         WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 12 MONTH)
         GROUP BY cohort_month, payment_month
         ORDER BY cohort_month, payment_month
     """)

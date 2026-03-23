@@ -7,7 +7,7 @@ def get_avg_review_rating(days: int = 30) -> float:
         FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND r.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days})
     return float(result) if result else 0.0
 
@@ -18,7 +18,7 @@ def get_avg_feedback_rating(days: int = 30) -> float:
         LEFT JOIN users u ON u.id = f.user_id
         WHERE (u.is_test IS NULL OR COALESCE(u.is_test, '0') != '1')
           AND f.rating IS NOT NULL
-          AND f.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND f.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days})
     return float(result) if result else 0.0
 
@@ -28,21 +28,21 @@ def get_rating_distribution(days: int = 30) -> pd.DataFrame:
         FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND r.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         GROUP BY r.rating
         ORDER BY r.rating
     """, {"days": days})
 
 def get_reviews_series(days: int = 30) -> pd.DataFrame:
     return fetch_df("""
-        SELECT DATE(r.created_at) as date,
+        SELECT DATE(CONVERT_TZ(r.created_at, '+00:00', '+03:00')) as date,
                COUNT(*) as count,
                ROUND(AVG(r.rating), 2) as avg_rating
         FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        GROUP BY DATE(r.created_at)
+          AND r.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
+        GROUP BY DATE(CONVERT_TZ(r.created_at, '+00:00', '+03:00'))
         ORDER BY date
     """, {"days": days})
 
@@ -51,7 +51,7 @@ def get_reviews_count(days: int = 30) -> int:
         SELECT COUNT(*) FROM reviews r
         JOIN users u ON u.id = r.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND r.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0
 
 def get_feedbacks_count(days: int = 30) -> int:
@@ -59,7 +59,7 @@ def get_feedbacks_count(days: int = 30) -> int:
         SELECT COUNT(*) FROM feedbacks f
         LEFT JOIN users u ON u.id = f.user_id
         WHERE (u.is_test IS NULL OR COALESCE(u.is_test, '0') != '1')
-          AND f.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND f.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0
 
 def get_recent_reviews(limit: int = 10) -> pd.DataFrame:

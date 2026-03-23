@@ -47,10 +47,10 @@ def check_all_metrics() -> List[Dict]:
     # DAU
     try:
         df = fetch_df("""
-            SELECT DATE(created_at) as date, COUNT(DISTINCT id) as val
+            SELECT DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) as date, COUNT(DISTINCT id) as val
             FROM users WHERE COALESCE(is_test, '0') != '1'
-            AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY DATE(created_at) ORDER BY date
+            AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 30 DAY)
+            GROUP BY DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) ORDER BY date
         """)
         if not df.empty:
             all_anomalies += detect_anomalies(df['val'], "DAU (новые пользователи)")
@@ -60,11 +60,11 @@ def check_all_metrics() -> List[Dict]:
     # Выручка
     try:
         df = fetch_df("""
-            SELECT DATE(ph.created_at) as date, SUM(ph.amount) as val
+            SELECT DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) as date, SUM(ph.amount) as val
             FROM payment_history ph JOIN users u ON u.id = ph.user_id
             WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
-            AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY DATE(ph.created_at) ORDER BY date
+            AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 30 DAY)
+            GROUP BY DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) ORDER BY date
         """)
         if not df.empty:
             all_anomalies += detect_anomalies(df['val'], "Выручка (руб)")
@@ -74,11 +74,11 @@ def check_all_metrics() -> List[Dict]:
     # Транскрипции
     try:
         df = fetch_df("""
-            SELECT DATE(t.created_at) as date, COUNT(*) as val
+            SELECT DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) as date, COUNT(*) as val
             FROM transcriptions t JOIN users u ON u.id = t.user_id
             WHERE COALESCE(u.is_test, '0') != '1'
-            AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY DATE(t.created_at) ORDER BY date
+            AND t.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 30 DAY)
+            GROUP BY DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) ORDER BY date
         """)
         if not df.empty:
             all_anomalies += detect_anomalies(df['val'], "Кол-во транскрипций")
@@ -88,11 +88,11 @@ def check_all_metrics() -> List[Dict]:
     # Средний рейтинг
     try:
         df = fetch_df("""
-            SELECT DATE(r.created_at) as date, AVG(r.rating) as val
+            SELECT DATE(CONVERT_TZ(r.created_at, '+00:00', '+03:00')) as date, AVG(r.rating) as val
             FROM reviews r JOIN users u ON u.id = r.user_id
             WHERE COALESCE(u.is_test, '0') != '1'
-            AND r.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY DATE(r.created_at) ORDER BY date
+            AND r.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 30 DAY)
+            GROUP BY DATE(CONVERT_TZ(r.created_at, '+00:00', '+03:00')) ORDER BY date
         """)
         if not df.empty:
             all_anomalies += detect_anomalies(df['val'], "Средний рейтинг")

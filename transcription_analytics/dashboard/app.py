@@ -65,32 +65,32 @@ with st.sidebar:
 @st.cache_data(ttl=3600)
 def load_dau_series(days):
     return fetch_df(f"""
-        SELECT DATE(created_at) AS date, COUNT(DISTINCT id) AS val
+        SELECT DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) AS date, COUNT(DISTINCT id) AS val
         FROM users WHERE COALESCE(is_test, '0') != '1'
-        AND created_at >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
-        GROUP BY DATE(created_at) ORDER BY date
+        AND created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL {days} DAY)
+        GROUP BY DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) ORDER BY date
     """)
 
 
 @st.cache_data(ttl=3600)
 def load_revenue_series(days):
     return fetch_df(f"""
-        SELECT DATE(ph.created_at) AS date, SUM(ph.amount) AS val
+        SELECT DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) AS date, SUM(ph.amount) AS val
         FROM payment_history ph JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
-        AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
-        GROUP BY DATE(ph.created_at) ORDER BY date
+        AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL {days} DAY)
+        GROUP BY DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) ORDER BY date
     """)
 
 
 @st.cache_data(ttl=3600)
 def load_transcriptions_series(days):
     return fetch_df(f"""
-        SELECT DATE(t.created_at) AS date, COUNT(*) AS val
+        SELECT DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) AS date, COUNT(*) AS val
         FROM transcriptions t JOIN users u ON u.id = t.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-        AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)
-        GROUP BY DATE(t.created_at) ORDER BY date
+        AND t.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL {days} DAY)
+        GROUP BY DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) ORDER BY date
     """)
 
 

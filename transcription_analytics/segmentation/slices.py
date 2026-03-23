@@ -12,10 +12,10 @@ def by_plan(days: int = 30) -> pd.DataFrame:
             COALESCE(SUM(ph.amount), 0) as revenue
         FROM users u
         LEFT JOIN transcriptions t ON t.user_id = u.id
-            AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+            AND t.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         LEFT JOIN payment_history ph ON ph.user_id = u.id
             AND ph.status = 'succeeded'
-            AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+            AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         WHERE COALESCE(u.is_test, '0') != '1'
         GROUP BY u.subscription_plan
         ORDER BY revenue DESC
@@ -31,12 +31,12 @@ def by_utm(days: int = 30) -> pd.DataFrame:
             COALESCE(SUM(ph.amount), 0) as revenue
         FROM users u
         LEFT JOIN transcriptions t ON t.user_id = u.id
-            AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+            AND t.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         LEFT JOIN payment_history ph ON ph.user_id = u.id
             AND ph.status = 'succeeded'
-            AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+            AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         GROUP BY utm_source
         ORDER BY users DESC
         LIMIT 20
@@ -52,7 +52,7 @@ def by_subscription_type(days: int = 30) -> pd.DataFrame:
         FROM users u
         LEFT JOIN payment_history ph ON ph.user_id = u.id
             AND ph.status = 'succeeded'
-            AND ph.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+            AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         WHERE COALESCE(u.is_test, '0') != '1'
         GROUP BY subscription_type
         ORDER BY revenue DESC
@@ -62,15 +62,15 @@ def by_landing_funnel(days: int = 30) -> pd.DataFrame:
     """Конверсия лендинговой воронки по дням."""
     return fetch_df("""
         SELECT
-            DATE(t.created_at) as date,
+            DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) as date,
             COUNT(CASE WHEN t.from_landing_funnel = 1 THEN 1 END) as from_landing,
             COUNT(CASE WHEN t.full_transcript_paid = 1 THEN 1 END) as paid_upsell,
             COUNT(*) as total_transcriptions
         FROM transcriptions t
         JOIN users u ON u.id = t.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND t.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
-        GROUP BY DATE(t.created_at)
+          AND t.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
+        GROUP BY DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00'))
         ORDER BY date
     """, {"days": days})
 
@@ -85,7 +85,7 @@ def by_utm_campaign(days: int = 30) -> pd.DataFrame:
         LEFT JOIN payment_history ph ON ph.user_id = u.id
             AND ph.status = 'succeeded'
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.created_at >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
+          AND u.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
           AND u.utm_campaign IS NOT NULL
         GROUP BY utm_campaign, utm_medium
         ORDER BY users DESC
