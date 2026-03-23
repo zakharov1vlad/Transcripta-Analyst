@@ -1,8 +1,8 @@
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+load_dotenv(find_dotenv(usecwd=True) or Path(__file__).parent.parent / ".env")
 
 # Database
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
