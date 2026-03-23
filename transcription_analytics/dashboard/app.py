@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import hashlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,11 +45,43 @@ st.set_page_config(
 st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
 
+# ─── Auth ─────────────────────────────────────────────────────────────────────
+
+USERS = {
+    "vlad": hashlib.sha256("Tr@nscr1pt@2026!".encode()).hexdigest(),
+}
+
+def _check_password(username: str, password: str) -> bool:
+    h = USERS.get(username.lower().strip())
+    return h is not None and h == hashlib.sha256(password.encode()).hexdigest()
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown(f"<h2 style='color:{PRIMARY}; text-align:center; margin-top:80px;'>🎙 Transcripta Analytics</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#94A3B8;'>Введите логин и пароль для доступа</p>", unsafe_allow_html=True)
+    col_l, col_c, col_r = st.columns([1, 1, 1])
+    with col_c:
+        username = st.text_input("Логин", placeholder="vlad")
+        password = st.text_input("Пароль", type="password")
+        if st.button("Войти", use_container_width=True, type="primary"):
+            if _check_password(username, password):
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Неверный логин или пароль")
+    st.stop()
+
+
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.markdown(f"<h2 style='color:{PRIMARY};'>🎙 Transcripta</h2>", unsafe_allow_html=True)
     st.markdown("**Analytics Dashboard**")
+    if st.button("Выйти", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
     st.divider()
 
     period_days = st.selectbox(
