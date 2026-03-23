@@ -145,18 +145,30 @@ transcription_analytics/
 └── scheduler/jobs.py       # APScheduler: hourly + 09:00 daily
 ```
 
-## Статус проекта
+## Статус проекта — ЗАВЕРШЁН ✅
 - [x] Требования собраны
 - [x] Стек выбран
 - [x] SSH-туннель настроен
 - [x] БД подключена (1139 реальных пользователей)
 - [x] Все метрики написаны и работают
 - [x] Streamlit дашборд (6 вкладок, Plotly)
-- [x] Telegram бот (hourly + daily)
+- [x] Яндекс Директ аналитика (расход, ROI) в боте и дашборде
+- [x] Telegram бот (hourly + daily) — работает на VPS
 - [x] Планировщик APScheduler
 - [x] Код запушен на GitHub
 - [x] Деплой на VPS 155.212.138.151 (systemd, автозапуск)
-- [ ] SSL сертификат (certbot) — ждём обновления DNS
+- [x] SSL сертификат (Let's Encrypt, действует до 2026-06-21)
+- [x] Домен analytics-transcripta.ru → nginx → Streamlit
+
+## Деплой на VPS (обновление файлов)
+Так как VPS не git-репо, файлы копируются через scp:
+```bash
+scp transcription_analytics/config/settings.py product.studio.test:/opt/transcripta/config/settings.py
+# или весь проект:
+rsync -av --exclude='.env' --exclude='__pycache__' --exclude='*.pyc' \
+  transcription_analytics/ product.studio.test:/opt/transcripta/
+ssh product.studio.test 'systemctl restart transcripta-bot transcripta-dashboard'
+```
 
 ## Credentials (в .env)
 - `ANTHROPIC_API_KEY` — есть
