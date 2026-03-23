@@ -62,6 +62,17 @@ def get_feedbacks_count(days: int = 30) -> int:
           AND f.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0
 
+def get_reviews_today() -> pd.DataFrame:
+    """Оценки и комментарии за сегодня (МСК)."""
+    return fetch_df("""
+        SELECT r.rating, r.review_text, u.email
+        FROM reviews r
+        JOIN users u ON u.id = r.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND DATE(CONVERT_TZ(r.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        ORDER BY r.created_at DESC
+    """)
+
 def get_recent_reviews(limit: int = 10) -> pd.DataFrame:
     return fetch_df("""
         SELECT r.rating, r.review_text, r.created_at, u.email

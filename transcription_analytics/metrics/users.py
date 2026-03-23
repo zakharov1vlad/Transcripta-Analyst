@@ -15,9 +15,31 @@ def get_dau_series(days: int = 30) -> pd.DataFrame:
     """, {"days": days})
 
 def get_dau_today() -> int:
+    """Уникальные пользователи, сделавшие транскрипцию сегодня (МСК)."""
     return fetch_one("""
-        SELECT COUNT(DISTINCT id) FROM users
-        WHERE COALESCE(is_test, '0') != '1' AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        SELECT COUNT(DISTINCT t.user_id) FROM transcriptions t
+        JOIN users u ON u.id = t.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+    """) or 0
+
+def get_verified_registrations_today() -> int:
+    """Верифицированные регистрации сегодня (МСК)."""
+    return fetch_one("""
+        SELECT COUNT(*) FROM users
+        WHERE COALESCE(is_test, '0') != '1'
+          AND email_verified = 1
+          AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+    """) or 0
+
+def get_new_subscriptions_today() -> int:
+    """Новые оплаченные подписки сегодня (МСК)."""
+    return fetch_one("""
+        SELECT COUNT(*) FROM payment_history ph
+        JOIN users u ON u.id = ph.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND ph.status = 'succeeded'
+          AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
 def get_mau(months_back: int = 1) -> int:

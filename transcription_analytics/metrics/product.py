@@ -2,10 +2,10 @@ import pandas as pd
 from db.queries import fetch_df, fetch_one
 
 def get_transcriptions_today() -> int:
+    """Транскрипции сегодня (МСК)."""
     return fetch_one("""
-        SELECT COUNT(*) FROM transcriptions t
-        JOIN users u ON u.id = t.user_id
-        WHERE COALESCE(u.is_test, '0') != '1' AND DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        SELECT COUNT(*) FROM transcriptions
+        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
 def get_transcriptions_series(days: int = 30) -> pd.DataFrame:
@@ -21,14 +21,35 @@ def get_transcriptions_series(days: int = 30) -> pd.DataFrame:
         ORDER BY date
     """, {"days": days})
 
-def get_transcriptions_minutes_today() -> float:
+def get_transcriptions_hours_today() -> float:
+    """Часов расшифровано сегодня (МСК), по duration."""
     result = fetch_one("""
-        SELECT ROUND(SUM(COALESCE(duration, 0)) / 60, 1)
-        FROM transcriptions t
-        JOIN users u ON u.id = t.user_id
-        WHERE COALESCE(u.is_test, '0') != '1' AND DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        SELECT ROUND(SUM(COALESCE(duration, 0)) / 3600, 2)
+        FROM transcriptions
+        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """)
     return float(result) if result else 0.0
+
+def get_transcriptions_minutes_today() -> float:
+    return get_transcriptions_hours_today() * 60
+
+def get_ai_reports_today() -> int:
+    """AI-отчёты сегодня (МСК)."""
+    return fetch_one("""
+        SELECT COUNT(*) FROM ai_reports ar
+        JOIN users u ON u.id = ar.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND DATE(CONVERT_TZ(ar.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+    """) or 0
+
+def get_chat_messages_today() -> int:
+    """Сообщений в AI-чат сегодня (МСК)."""
+    return fetch_one("""
+        SELECT COUNT(*) FROM chat_history ch
+        JOIN users u ON u.id = ch.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND DATE(CONVERT_TZ(ch.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+    """) or 0
 
 def get_total_transcriptions() -> int:
     return fetch_one("""
