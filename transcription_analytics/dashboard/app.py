@@ -9,8 +9,10 @@ from dashboard.components.overview import render_overview
 from dashboard.components.charts import (
     dau_chart, revenue_chart, transcriptions_chart, rating_series_chart,
     rating_distribution_chart, plan_distribution_chart, media_type_chart,
-    utm_chart, cohort_heatmap, arpu_arppu_chart
+    utm_chart, cohort_heatmap, arpu_arppu_chart,
+    direct_spend_chart, roi_chart, revenue_vs_spend_chart
 )
+from metrics.direct import get_direct_spend_today, get_direct_spend_period, get_direct_spend_series, get_roi_series, get_roi_today
 from dashboard.components.tables import render_daily_table, render_cohort_table, render_segmentation_table
 from dashboard.components.hypotheses import render_hypotheses
 from db.queries import fetch_df
@@ -142,6 +144,16 @@ def load_weekly_cohorts():
     return get_weekly_cohorts()
 
 
+@st.cache_data(ttl=3600)
+def load_direct_spend_series(days):
+    return get_direct_spend_series(days)
+
+
+@st.cache_data(ttl=3600)
+def load_roi_series(days):
+    return get_roi_series(days)
+
+
 # ─── Main content ─────────────────────────────────────────────────────────────
 
 st.markdown(f"<h1 style='color:{PRIMARY}; margin-bottom:0;'>🎙 Transcripta Analytics</h1>", unsafe_allow_html=True)
@@ -213,19 +225,43 @@ with tabs[1]:
 
 with tabs[2]:
     metrics2 = load_all_metrics()
+    spend_today = get_direct_spend_today()
+    spend_period = get_direct_spend_period(period_days)
+    roi_today = get_roi_today()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Выручка сегодня", f"{metrics2['revenue_today']:,.0f} ₽")
     col2.metric("Выручка за месяц", f"{metrics2['revenue_month']:,.0f} ₽")
     col3.metric("LTV", f"{metrics2['ltv']:,.0f} ₽")
 
-    col4, col5 = st.columns(2)
+    col4, col5, col6, col7 = st.columns(4)
     col4.metric("ARPU 30д", f"{metrics2['arpu_30d']:,.0f} ₽")
     col5.metric("ARPPU 30д", f"{metrics2['arppu_30d']:,.0f} ₽")
+    col6.metric("Расход Директ сегодня", f"{spend_today:,.0f} ₽" if spend_today > 0 else "н/д")
+    col7.metric(f"Расход Директ {period_days}д", f"{spend_period:,.0f} ₽" if spend_period > 0 else "н/д")
+
+    if roi_today is not None:
+        st.metric("ROI сегодня", f"{roi_today:+.1f}%", delta=f"{roi_today:+.1f}%")
+
+    st.divider()
 
     df_rev2 = load_revenue_series(period_days)
-    if not df_rev2.empty:
-        st.plotly_chart(revenue_chart(df_rev2), use_container_width=True, key="rev_finance")
+    df_spend2 = load_direct_spend_series(period_days)
+
+    if not df_rev2.empty or not df_spend2.empty:
+        st.plotly_chart(revenue_vs_spend_chart(df_rev2, df_spend2), use_container_width=True, key="rev_vs_spend")
+
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        if not df_rev2.empty:
+            st.plotly_chart(revenue_chart(df_rev2), use_container_width=True, key="rev_finance")
+    with col_r2:
+        if not df_spend2.empty:
+            st.plotly_chart(direct_spend_chart(df_spend2), use_container_width=True, key="spend_finance")
+
+    df_roi = load_roi_series(period_days)
+    if not df_roi.empty and df_roi["roi"].notna().any():
+        st.plotly_chart(roi_chart(df_roi), use_container_width=True, key="roi_chart")
 
 
 # ─── Tab: Продукт ─────────────────────────────────────────────────────────────

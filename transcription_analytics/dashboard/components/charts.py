@@ -136,6 +136,53 @@ def cohort_heatmap(pivot: pd.DataFrame) -> go.Figure:
     return _apply_template(fig)
 
 
+def direct_spend_chart(df: pd.DataFrame) -> go.Figure:
+    """Расход в Яндекс Директ по дням."""
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=df["date"], y=df["spend"],
+        name="Расход",
+        marker_color=DANGER,
+        opacity=0.85
+    ))
+    fig.update_layout(title="Расход Яндекс Директ по дням (₽)", xaxis_title="Дата", yaxis_title="Руб")
+    return _apply_template(fig)
+
+
+def roi_chart(df: pd.DataFrame) -> go.Figure:
+    """ROI по дням: (выручка - расход) / расход * 100."""
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["roi"],
+        mode="lines+markers",
+        name="ROI %",
+        line=dict(color=SUCCESS, width=2),
+        marker=dict(size=5)
+    ))
+    fig.add_hline(y=0, line_dash="dash", line_color=DANGER, annotation_text="Нулевой ROI")
+    fig.update_layout(title="ROI (выручка / расход Директ)", xaxis_title="Дата", yaxis_title="ROI %")
+    return _apply_template(fig)
+
+
+def revenue_vs_spend_chart(df_rev: pd.DataFrame, df_spend: pd.DataFrame) -> go.Figure:
+    """Выручка vs расход Директ на одном графике."""
+    fig = go.Figure()
+    if not df_rev.empty:
+        fig.add_trace(go.Scatter(
+            x=df_rev["date"], y=df_rev["val"],
+            name="Выручка", line=dict(color=SUCCESS, width=2), fill="tozeroy",
+            fillcolor="rgba(16,185,129,0.1)"
+        ))
+    if not df_spend.empty:
+        fig.add_trace(go.Scatter(
+            x=df_spend["date"], y=df_spend["spend"],
+            name="Расход Директ", line=dict(color=DANGER, width=2), fill="tozeroy",
+            fillcolor="rgba(239,68,68,0.1)"
+        ))
+    fig.update_layout(title="Выручка vs Расход Директ", xaxis_title="Дата", yaxis_title="Руб")
+    return _apply_template(fig)
+
+
 def arpu_arppu_chart(df_arpu: pd.DataFrame, df_arppu: pd.DataFrame) -> go.Figure:
     """ARPU и ARPPU на одном графике."""
     fig = go.Figure()

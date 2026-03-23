@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/zaharov1vlad/Desktop/AI Agents/**)",
+      "Read(//Users/zaharov1vlad/Desktop/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/zaharov1vlad/Desktop/AI Agents/Test"
+    ]
+  },
+  "disabledMcpjsonServers": ["context7", "playwright"],
+  "enableAllProjectMcpServers": false
+}

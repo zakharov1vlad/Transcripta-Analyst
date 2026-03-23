@@ -5,6 +5,7 @@ from metrics.users import get_dau_today, get_registrations_today, get_active_sub
 from metrics.revenue import get_revenue_today, get_purchases_today
 from metrics.product import get_transcriptions_today, get_transcriptions_minutes_today
 from metrics.satisfaction import get_avg_review_rating
+from metrics.direct import get_direct_spend_today, get_roi_today
 
 def build_hourly_message() -> str:
     from datetime import datetime
@@ -18,6 +19,11 @@ def build_hourly_message() -> str:
     transcriptions = get_transcriptions_today()
     minutes = get_transcriptions_minutes_today()
     rating = get_avg_review_rating(days=7)
+    spend = get_direct_spend_today()
+    roi = get_roi_today()
+
+    roi_str = f"{roi:+.1f}%" if roi is not None else "н/д"
+    spend_str = f"{spend:,.0f} ₽" if spend > 0 else "нет данных"
 
     msg = f"""📊 *Transcripta — сводка на {now}*
 
@@ -29,6 +35,8 @@ def build_hourly_message() -> str:
 💰 *Финансы*
 • Выручка сегодня: {revenue:,.0f} ₽
 • Покупок сегодня: {purchases}
+• Расход Директ: {spend_str}
+• ROI: {roi_str}
 
 🎙 *Продукт*
 • Транскрипций сегодня: {transcriptions:,}

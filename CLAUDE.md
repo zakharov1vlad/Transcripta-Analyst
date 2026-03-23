@@ -12,10 +12,14 @@
 - **Хостинг** — Beget VPS (без Docker, МВП)
 
 ## Инфраструктура
-- Beget VPS: SSH host 93.189.229.156, user=vlad
+- **Основной VPS (дашборд + бот)**: 155.212.138.151, user=root, alias=product.studio.test
+  - Код: /opt/transcripta/
+  - Systemd: transcripta-dashboard.service + transcripta-bot.service
+  - SSH-туннель к БД: ssh -fN -L 3306:127.0.0.1:3306 vlad@93.189.229.156
+- **БД VPS**: 93.189.229.156, user=vlad, MySQL на 127.0.0.1:3306
 - MySQL: host=127.0.0.1, port=3306, db=transcription_ai, user=root, password=root
-- SSH-туннель: `ssh -fN mysql-tunnel` (alias в ~/.ssh/config)
-- ~/.ssh/config: Host mysql-tunnel → 93.189.229.156, User vlad, IdentityFile ~/.ssh/transcripta_analyst
+- SSH ключ: ~/.ssh/transcripta_analyst (для обоих серверов)
+- Домен: analytics-transcripta.ru → 155.212.138.151
 
 ## Запуск (локально)
 ```bash
@@ -145,13 +149,14 @@ transcription_analytics/
 - [x] Требования собраны
 - [x] Стек выбран
 - [x] SSH-туннель настроен
-- [x] БД подключена (1105 реальных пользователей)
+- [x] БД подключена (1139 реальных пользователей)
 - [x] Все метрики написаны и работают
 - [x] Streamlit дашборд (6 вкладок, Plotly)
 - [x] Telegram бот (hourly + daily)
 - [x] Планировщик APScheduler
 - [x] Код запушен на GitHub
-- [ ] Деплой на Beget VPS (постоянная работа)
+- [x] Деплой на VPS 155.212.138.151 (systemd, автозапуск)
+- [ ] SSL сертификат (certbot) — ждём обновления DNS
 
 ## Credentials (в .env)
 - `ANTHROPIC_API_KEY` — есть
