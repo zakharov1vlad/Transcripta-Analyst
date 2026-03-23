@@ -157,8 +157,10 @@ transcription_analytics/
 - [x] Планировщик APScheduler
 - [x] Код запушен на GitHub
 - [x] Деплой на VPS 155.212.138.151 (systemd, автозапуск)
-- [x] SSL сертификат (Let's Encrypt, действует до 2026-06-21)
-- [x] Домен analytics-transcripta.ru → nginx → Streamlit
+- [x] SSL сертификат (Let's Encrypt, analytics-transcripta.ru + www, до 2026-06-21)
+- [x] Домен analytics-transcripta.ru + www → nginx (HTTPS) → Streamlit
+- [x] Страница входа (логин: vlad, пароль: Transcripta2026)
+- [x] Часовой бот: МСК время, верифицированные рег., подписки, конверсия, прибыль, AI-отчёты, оценки
 
 ## Деплой на VPS (обновление файлов)
 Так как VPS не git-репо, файлы копируются через scp:

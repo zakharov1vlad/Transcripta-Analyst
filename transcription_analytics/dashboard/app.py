@@ -48,7 +48,7 @@ st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
 USERS = {
-    "vlad": hashlib.sha256("Tr@nscr1pt@2026!".encode()).hexdigest(),
+    "vlad": hashlib.sha256("Transcripta2026".encode()).hexdigest(),
 }
 
 def _check_password(username: str, password: str) -> bool:
