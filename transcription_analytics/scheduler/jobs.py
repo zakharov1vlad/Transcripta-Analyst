@@ -8,23 +8,23 @@ logger = logging.getLogger(__name__)
 def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="Europe/Moscow")
 
-    # Ежедневный отчёт в 09:00 МСК
+    # Ежечасная сводка метрик
     scheduler.add_job(
-        _run_daily,
-        trigger=CronTrigger(hour=9, minute=0),
-        id="daily_report",
-        name="Daily Telegram Report",
-        misfire_grace_time=600
+        _run_hourly,
+        trigger=CronTrigger(minute=0),
+        id="hourly_report",
+        name="Hourly Telegram Report",
+        misfire_grace_time=300
     )
 
     scheduler.start()
-    logger.info("Scheduler started: daily report at 09:00 MSK")
+    logger.info("Scheduler started: hourly report every hour")
     return scheduler
 
 
-def _run_daily():
+def _run_hourly():
     try:
         from bot.hourly_report import run
         run()
     except Exception as e:
-        logger.error(f"Daily report failed: {e}")
+        logger.error(f"Hourly report failed: {e}")
