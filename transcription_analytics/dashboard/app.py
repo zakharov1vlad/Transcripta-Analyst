@@ -2,6 +2,7 @@ import streamlit as st
 import sys
 import os
 import hashlib
+import hmac
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -47,13 +48,22 @@ st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 
-USERS = {
-    "vlad": hashlib.sha256("Transcripta2026".encode()).hexdigest(),
-}
+SECRET_TOKEN = "vlad-transcripta-9f2k"
+LOGIN = "vlad"
+PASSWORD = "vlad2026"
+
+def _check_token(token: str) -> bool:
+    return hmac.compare_digest(token, SECRET_TOKEN)
 
 def _check_password(username: str, password: str) -> bool:
-    h = USERS.get(username.lower().strip())
-    return h is not None and h == hashlib.sha256(password.encode()).hexdigest()
+    ok_user = hmac.compare_digest(username.lower().strip(), LOGIN)
+    ok_pass = hmac.compare_digest(password, PASSWORD)
+    return ok_user and ok_pass
+
+# Авторизация через URL-токен (?token=...) или через session_state
+params = st.query_params
+if params.get("token") == SECRET_TOKEN:
+    st.session_state.authenticated = True
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
