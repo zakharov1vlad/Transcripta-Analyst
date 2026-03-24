@@ -36,10 +36,10 @@ def build_hourly_message() -> str:
     active_subs = get_active_subscribers()
 
     purchases = get_purchases_today()
-    revenue = get_revenue_today()
+    revenue = float(get_revenue_today() or 0)
 
-    spend = get_direct_spend_today()
-    hours = get_transcriptions_hours_today()
+    spend = float(get_direct_spend_today() or 0)
+    hours = float(get_transcriptions_hours_today() or 0)
     transcription_cost = round(hours * TRANSCRIPTION_COST_USD_PER_HOUR * USD_TO_RUB, 0)
     total_cost = spend + transcription_cost
     profit = round(revenue - total_cost, 0)
