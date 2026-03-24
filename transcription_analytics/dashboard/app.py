@@ -1,8 +1,6 @@
 import streamlit as st
 import sys
 import os
-import hashlib
-import hmac
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -46,42 +44,6 @@ st.set_page_config(
 st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
 
-# ─── Auth ─────────────────────────────────────────────────────────────────────
-
-SECRET_TOKEN = "vlad-transcripta-9f2k"
-LOGIN = "vlad"
-PASSWORD = "vlad2026"
-
-def _check_token(token: str) -> bool:
-    return hmac.compare_digest(token, SECRET_TOKEN)
-
-def _check_password(username: str, password: str) -> bool:
-    ok_user = hmac.compare_digest(username.lower().strip(), LOGIN)
-    ok_pass = hmac.compare_digest(password, PASSWORD)
-    return ok_user and ok_pass
-
-# Авторизация через URL-токен (?token=...) или через session_state
-params = st.query_params
-if params.get("token") == SECRET_TOKEN:
-    st.session_state.authenticated = True
-
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    st.markdown(f"<h2 style='color:{PRIMARY}; text-align:center; margin-top:80px;'>🎙 Transcripta Analytics</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color:#94A3B8;'>Введите логин и пароль для доступа</p>", unsafe_allow_html=True)
-    col_l, col_c, col_r = st.columns([1, 1, 1])
-    with col_c:
-        username = st.text_input("Логин", placeholder="vlad")
-        password = st.text_input("Пароль", type="password")
-        if st.button("Войти", use_container_width=True, type="primary"):
-            if _check_password(username, password):
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Неверный логин или пароль")
-    st.stop()
 
 
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -89,9 +51,6 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.markdown(f"<h2 style='color:{PRIMARY};'>🎙 Transcripta</h2>", unsafe_allow_html=True)
     st.markdown("**Analytics Dashboard**")
-    if st.button("Выйти", use_container_width=True):
-        st.session_state.authenticated = False
-        st.rerun()
     st.divider()
 
     period_days = st.selectbox(
