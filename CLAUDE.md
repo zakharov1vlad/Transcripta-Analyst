@@ -33,8 +33,8 @@ PYTHONPATH=. python3 main.py                              # дашборд + п�
 ## Telegram
 - Бот уже создан (токен в .env)
 - Chat ID группы аналитики: `-5172505765`
-- **Каждый час в :00** — сводка метрик за текущий день
-- **Каждый день в 09:00 МСК** — аномалии + гипотезы от Claude
+- **Каждый час в :00** — сводка метрик за текущий день (hourly_report.py)
+- Ежедневный отчёт и гипотезы убраны — только hourly
 
 ## GitHub
 - Репозиторий: https://github.com/zakharov1vlad/Transcripta-Analyst
@@ -112,6 +112,21 @@ PYTHONPATH=. python3 main.py                              # дашборд + п�
 - `id`, `user_id`, `discount_type`, `discount_value`
 - `used_at`, `expires_at`, `promo_code`
 
+### surveys
+- `id`, `user_id`, `user_email`, `profession`, `use_case` (text)
+- `frequency`, `avg_duration`, `willingness_to_pay`, `important_features` (text)
+- `feedback` (text), `willing_to_call`, `created_at`
+
+### campaign_stats_daily
+- `stat_date`, `campaign_name`, `cost`, `clicks`, `impressions`
+
+## Важные правила биллинга
+- Подписки используют `INTERVAL 1 MONTH` (не 30 дней!) — март=31д, апрель=30д, февраль=28д
+- `active_subscriptions.end_date` = `start_date + 1 MONTH` (datetime, UTC)
+- Для когортного анализа оплат: `PERIOD_DIFF(YYYYMM, YYYYMM)` вместо `FLOOR(DATEDIFF/30)`
+- Первичная оплата: `MIN(id) FROM payment_history WHERE status='succeeded' AND plan_name != 'Дополнительные минуты' AND is_autopay = 0`
+- Расход Директ уже с НДС — не умножать
+
 ## Структура проекта
 ```
 transcription_analytics/
@@ -140,9 +155,8 @@ transcription_analytics/
 │       ├── tables.py       # таблицы по дням + когорты
 │       └── hypotheses.py   # таблица гипотез
 ├── bot/
-│   ├── hourly_report.py    # метрики за текущий день
-│   └── daily_report.py     # аномалии + гипотезы Claude
-└── scheduler/jobs.py       # APScheduler: hourly + 09:00 daily
+│   └── hourly_report.py    # часовая сводка (новые/старые юзеры, финансы, продукт, ОС)
+└── scheduler/jobs.py       # APScheduler: hourly report каждый час
 ```
 
 ## Статус проекта — ЗАВЕРШЁН ✅
@@ -160,7 +174,7 @@ transcription_analytics/
 - [x] SSL сертификат (Let's Encrypt, analytics-transcripta.ru + www, до 2026-06-21)
 - [x] Домен analytics-transcripta.ru + www → nginx (HTTPS) → Streamlit
 - [x] Страница входа (логин: vlad, пароль: Transcripta2026)
-- [x] Часовой бот: МСК время, верифицированные рег., подписки, конверсия, прибыль, AI-отчёты, оценки
+- [x] Часовой бот v2: новые/старые юзеры, первичные/повторные/минуты, ожидаемые/факт списания, DAU старые, feedbacks, surveys contacts
 
 ## Деплой на VPS (обновление файлов)
 Так как VPS не git-репо, файлы копируются через scp:

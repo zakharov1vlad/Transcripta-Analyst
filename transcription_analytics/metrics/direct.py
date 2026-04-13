@@ -62,7 +62,7 @@ def get_roi_series(days: int = 30) -> pd.DataFrame:
     """, {"days": days})
 
 
-def get_roi_today() -> float | None:
+def get_roi_today():
     """ROI за сегодня."""
     from metrics.revenue import get_revenue_today
     spend = get_direct_spend_today()
