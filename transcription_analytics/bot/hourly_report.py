@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import telegram
 from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from db.queries import fetch_one, fetch_df
-from metrics.users import get_verified_registrations_today, get_dau_today
+from metrics.users import get_verified_registrations_today, get_dau_today, get_total_users, get_active_subscribers
 from metrics.product import (
     get_transcriptions_today,
     get_transcriptions_hours_today,
@@ -169,6 +169,8 @@ def build_hourly_message() -> str:
     now = datetime.now(msk).strftime("%d.%m.%Y %H:%M")
 
     # НОВЫЕ ПОЛЬЗОВАТЕЛИ
+    total_users = get_total_users()
+    active_subs = get_active_subscribers()
     registrations = get_verified_registrations_today()
     new_subs = _get_new_subscribers_today()
     conv_new = round(new_subs / registrations * 100, 1) if registrations > 0 else 0.0
@@ -204,8 +206,10 @@ def build_hourly_message() -> str:
     msg = f"""📊 *Transcripta — сводка на {now} МСК*
 
 👥 *НОВЫЕ ПОЛЬЗОВАТЕЛИ*
-• Регистрации: {registrations}
-• Новые подписки: {new_subs}
+• Всего юзеров: {total_users:,}
+• Активных подписок: {active_subs:,}
+• Регистрации сегодня: {registrations}
+• Новые подписки сегодня: {new_subs}
 • Конверсия рег → оплата: {conv_new:.1f}%
 
 🔄 *СТАРЫЕ ПОЛЬЗОВАТЕЛИ*
