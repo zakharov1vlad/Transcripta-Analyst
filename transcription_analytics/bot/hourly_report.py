@@ -118,22 +118,20 @@ def _get_dau_old_today() -> int:
     """) or 0
 
 
-def _get_feedbacks_today() -> list:
-    """Оценки из feedbacks за сегодня."""
+def _get_ratings_today() -> str:
+    """Оценки (rating) из surveys за сегодня — через запятую."""
     df = fetch_df(f"""
-        SELECT f.rating, f.message, COALESCE(f.user_name, f.email, '—') AS who
-        FROM feedbacks f
-        LEFT JOIN users u ON u.id = f.user_id
-        WHERE (u.is_test IS NULL OR COALESCE(u.is_test, '0') != '1')
-          AND {TODAY_COL.format(col='f.created_at')}
-        ORDER BY f.created_at DESC
+        SELECT s.rating
+        FROM surveys s
+        JOIN users u ON u.id = s.user_id
+        WHERE COALESCE(u.is_test, '0') != '1'
+          AND s.rating IS NOT NULL
+          AND {TODAY_COL.format(col='s.created_at')}
+        ORDER BY s.created_at
     """)
-    lines = []
-    for _, row in df.iterrows():
-        r = f"{int(row['rating'])}/5" if row["rating"] else "—"
-        msg = str(row["message"]).strip()[:120] if row["message"] else "—"
-        lines.append(f"  {r} — {msg}")
-    return lines
+    if df.empty:
+        return "нет"
+    return ", ".join(str(int(r)) for r in df["rating"])
 
 
 def _get_surveys_contacts_today() -> list:
@@ -197,10 +195,9 @@ def build_hourly_message() -> str:
     chat_msgs = get_chat_messages_today()
 
     # ОС
-    feedbacks = _get_feedbacks_today()
+    ratings = _get_ratings_today()
     contacts = _get_surveys_contacts_today()
 
-    fb_block = "\n".join(feedbacks) if feedbacks else "  нет"
     ct_block = "\n".join(contacts) if contacts else "  нет"
 
     msg = f"""📊 *Transcripta — сводка на {now} МСК*
@@ -234,8 +231,8 @@ def build_hourly_message() -> str:
 • AI-отчётов: {ai_reports}
 • AI-сообщений: {chat_msgs}
 
-⭐️ *ОС*
-{fb_block}
+⭐️ *Оценки*
+{ratings}
 
 📞 *Контакты*
 {ct_block}
