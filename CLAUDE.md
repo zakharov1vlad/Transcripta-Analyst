@@ -115,7 +115,13 @@ PYTHONPATH=. python3 main.py                              # дашборд + п�
 ### surveys
 - `id`, `user_id`, `user_email`, `profession`, `use_case` (text)
 - `frequency`, `avg_duration`, `willingness_to_pay`, `important_features` (text)
-- `feedback` (text), `willing_to_call`, `created_at`
+- `feedback` (text), `willing_to_call`, `rating` (1-5, nullable), `created_at`
+
+### plans
+- `id`, `slug`, `display_name`, `version`
+- `monthly_price`, `yearly_price` (decimal)
+- `limits_json` (json), `is_active`, `valid_from`, `created_at`
+- Связь: `users.plan_id` → `plans.id`; `users.subscription_type` = monthly/yearly → брать `monthly_price` или `yearly_price`
 
 ### campaign_stats_daily
 - `stat_date`, `campaign_name`, `cost`, `clicks`, `impressions`
@@ -174,7 +180,7 @@ transcription_analytics/
 - [x] SSL сертификат (Let's Encrypt, analytics-transcripta.ru + www, до 2026-06-21)
 - [x] Домен analytics-transcripta.ru + www → nginx (HTTPS) → Streamlit
 - [x] Страница входа (логин: vlad, пароль: Transcripta2026)
-- [x] Часовой бот v2: новые/старые юзеры, первичные/повторные/минуты, ожидаемые/факт списания, DAU старые, feedbacks, surveys contacts
+- [x] Часовой бот v2: новые/старые юзеры, первичные/повторные/минуты, ожидаемые/факт списания, DAU старые, оценки из surveys.rating, контакты из surveys.willing_to_call
 
 ## Деплой на VPS (обновление файлов)
 Так как VPS не git-репо, файлы копируются через scp:
