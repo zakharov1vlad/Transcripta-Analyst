@@ -1,11 +1,12 @@
 import pandas as pd
 from db.queries import fetch_df, fetch_one
 
-def get_transcriptions_today() -> int:
-    """Транскрипции сегодня (МСК)."""
-    return fetch_one("""
+def get_transcriptions_today(date_str: str = None) -> int:
+    """Транскрипции за дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    return fetch_one(f"""
         SELECT COUNT(*) FROM transcriptions
-        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = {d}
     """) or 0
 
 def get_transcriptions_series(days: int = 30) -> pd.DataFrame:
@@ -21,34 +22,37 @@ def get_transcriptions_series(days: int = 30) -> pd.DataFrame:
         ORDER BY date
     """, {"days": days})
 
-def get_transcriptions_hours_today() -> float:
-    """Часов расшифровано сегодня (МСК), по duration."""
-    result = fetch_one("""
+def get_transcriptions_hours_today(date_str: str = None) -> float:
+    """Часов расшифровано за дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    result = fetch_one(f"""
         SELECT ROUND(SUM(COALESCE(duration, 0)) / 3600, 2)
         FROM transcriptions
-        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        WHERE DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = {d}
     """)
     return float(result) if result else 0.0
 
 def get_transcriptions_minutes_today() -> float:
     return get_transcriptions_hours_today() * 60
 
-def get_ai_reports_today() -> int:
-    """AI-отчёты сегодня (МСК)."""
-    return fetch_one("""
+def get_ai_reports_today(date_str: str = None) -> int:
+    """AI-отчёты за дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    return fetch_one(f"""
         SELECT COUNT(*) FROM ai_reports ar
         JOIN users u ON u.id = ar.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND DATE(CONVERT_TZ(ar.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+          AND DATE(CONVERT_TZ(ar.created_at, '+00:00', '+03:00')) = {d}
     """) or 0
 
-def get_chat_messages_today() -> int:
-    """Сообщений в AI-чат сегодня (МСК)."""
-    return fetch_one("""
+def get_chat_messages_today(date_str: str = None) -> int:
+    """Сообщений в AI-чат за дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    return fetch_one(f"""
         SELECT COUNT(*) FROM chat_history ch
         JOIN users u ON u.id = ch.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND DATE(CONVERT_TZ(ch.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+          AND DATE(CONVERT_TZ(ch.created_at, '+00:00', '+03:00')) = {d}
     """) or 0
 
 def get_total_transcriptions() -> int:

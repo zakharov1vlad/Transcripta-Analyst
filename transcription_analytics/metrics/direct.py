@@ -2,12 +2,13 @@ import pandas as pd
 from db.queries import fetch_df, fetch_one
 
 
-def get_direct_spend_today() -> float:
-    """Расход в Яндекс Директ за сегодня (МСК)."""
-    result = fetch_one("""
+def get_direct_spend_today(date_str: str = None) -> float:
+    """Расход в Яндекс Директ за дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    result = fetch_one(f"""
         SELECT COALESCE(SUM(cost), 0)
         FROM campaign_stats_daily
-        WHERE stat_date = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+        WHERE stat_date = {d}
     """)
     return round(float(result), 2) if result else 0.0
 

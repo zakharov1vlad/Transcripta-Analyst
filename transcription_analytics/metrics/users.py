@@ -14,22 +14,24 @@ def get_dau_series(days: int = 30) -> pd.DataFrame:
         ORDER BY date
     """, {"days": days})
 
-def get_dau_today() -> int:
-    """Уникальные пользователи, сделавшие транскрипцию сегодня (МСК)."""
-    return fetch_one("""
+def get_dau_today(date_str: str = None) -> int:
+    """Уникальные пользователи, сделавшие транскрипцию в дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    return fetch_one(f"""
         SELECT COUNT(DISTINCT t.user_id) FROM transcriptions t
         JOIN users u ON u.id = t.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+          AND DATE(CONVERT_TZ(t.created_at, '+00:00', '+03:00')) = {d}
     """) or 0
 
-def get_verified_registrations_today() -> int:
-    """Верифицированные регистрации сегодня (МСК)."""
-    return fetch_one("""
+def get_verified_registrations_today(date_str: str = None) -> int:
+    """Верифицированные регистрации в дату date_str (МСК), по умолчанию — сегодня."""
+    d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    return fetch_one(f"""
         SELECT COUNT(*) FROM users
         WHERE COALESCE(is_test, '0') != '1'
           AND email_verified = 1
-          AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+          AND DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = {d}
     """) or 0
 
 def get_new_subscriptions_today() -> int:
