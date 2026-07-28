@@ -3,6 +3,13 @@ from db.queries import fetch_df, fetch_one
 
 BASE_FILTER = "WHERE COALESCE(u.is_test, '0') != '1'"
 
+# Платные тарифы (source of truth = build/gen_product_finance.py в Marketing Assistant).
+# ВАЖНО: в БД free-тарифы называются 'Бесплатный'/'Гостевой', НЕ 'Free' — поэтому
+# фильтр "subscription_plan != 'Free'" их НЕ отсекал и раздувал метрики (активные
+# подписки, ожидаемые списания, churn). Считаем подписчиком только платный тариф.
+PAID_PLANS = ('Базовый', 'Стандартный', 'Экспертный', 'Профессиональный')
+_PAID_SQL = "('Базовый','Стандартный','Экспертный','Профессиональный')"
+
 def get_dau_series(days: int = 30) -> pd.DataFrame:
     """DAU за последние N дней."""
     return fetch_df(f"""
@@ -41,6 +48,7 @@ def get_new_subscriptions_today() -> int:
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND ph.status = 'succeeded'
+          AND ph.refunded_at IS NULL
           AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
@@ -78,20 +86,20 @@ def get_registrations_today() -> int:
     """) or 0
 
 def get_active_subscribers() -> int:
-    return fetch_one("""
+    return fetch_one(f"""
         SELECT COUNT(DISTINCT u.id) FROM users u
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND u.subscription_plan != 'Free'
+          AND u.subscription_plan IN {_PAID_SQL}
           AND u.subscription_expires_at > NOW()
     """) or 0
 
 def get_churn_rate(days: int = 30) -> float:
     """Процент пользователей у кого истекла подписка и не продлили."""
-    expired = fetch_one("""
+    expired = fetch_one(f"""
         SELECT COUNT(DISTINCT u.id) FROM users u
         WHERE COALESCE(u.is_test, '0') != '1'
           AND u.subscription_expires_at BETWEEN DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY) AND DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
-          AND u.subscription_plan != 'Free'
+          AND u.subscription_plan IN {_PAID_SQL}
     """, {"days": days}) or 0
 
     renewed = fetch_one("""
@@ -99,6 +107,7 @@ def get_churn_rate(days: int = 30) -> float:
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND ph.status = 'succeeded'
+          AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0
 
@@ -143,9 +152,9 @@ def get_plan_distribution() -> pd.DataFrame:
     """)
 
 def get_subscription_type_split() -> pd.DataFrame:
-    return fetch_df("""
+    return fetch_df(f"""
         SELECT subscription_type, COUNT(*) as count
         FROM users
-        WHERE COALESCE(is_test, '0') != '1' AND subscription_plan != 'Free'
+        WHERE COALESCE(is_test, '0') != '1' AND subscription_plan IN {_PAID_SQL}
         GROUP BY subscription_type
     """)

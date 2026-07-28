@@ -7,7 +7,7 @@ def get_revenue_today() -> float:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0.0
 
@@ -17,7 +17,7 @@ def get_revenue_series(days: int = 30) -> pd.DataFrame:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         GROUP BY DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00'))
         ORDER BY date
@@ -28,7 +28,7 @@ def get_revenue_total() -> float:
         SELECT COALESCE(SUM(ph.amount), 0)
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
-        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
+        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
     """) or 0.0
 
 def get_revenue_month() -> float:
@@ -37,7 +37,7 @@ def get_revenue_month() -> float:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_FORMAT(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), '%Y-%m-01')
     """) or 0.0
 
@@ -49,7 +49,7 @@ def get_arppu(days: int = 30) -> float:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days})
     return round(float(result), 2) if result else 0.0
@@ -61,7 +61,7 @@ def get_arpu(days: int = 30) -> float:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
     """, {"days": days}) or 0.0
 
@@ -82,7 +82,7 @@ def get_ltv() -> float:
             SELECT ph.user_id, SUM(ph.amount) as user_total
             FROM payment_history ph
             JOIN users u ON u.id = ph.user_id
-            WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
+            WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
             GROUP BY ph.user_id
         ) t
     """)
@@ -94,7 +94,7 @@ def get_purchases_today() -> int:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
     """) or 0
 
@@ -104,7 +104,7 @@ def get_purchases_series(days: int = 30) -> pd.DataFrame:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         GROUP BY DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00'))
         ORDER BY date
@@ -116,7 +116,7 @@ def get_revenue_by_plan(days: int = 30) -> pd.DataFrame:
         FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
+          AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
           AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL :days DAY)
         GROUP BY ph.plan_name
         ORDER BY revenue DESC
@@ -127,11 +127,11 @@ def get_autopay_rate() -> float:
     total = fetch_one("""
         SELECT COUNT(*) FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
-        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
+        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded' AND ph.refunded_at IS NULL
     """) or 0
     auto = fetch_one("""
         SELECT COUNT(*) FROM payment_history ph
         JOIN users u ON u.id = ph.user_id
-        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded' AND ph.is_autopay = 1
+        WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded' AND ph.refunded_at IS NULL AND ph.is_autopay = 1
     """) or 0
     return round(auto / total * 100, 2) if total > 0 else 0.0

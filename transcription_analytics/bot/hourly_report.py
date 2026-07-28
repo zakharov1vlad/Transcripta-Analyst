@@ -1,6 +1,4 @@
 import asyncio
-import json
-import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -16,25 +14,12 @@ from metrics.product import (
 )
 from metrics.direct import get_direct_spend_today
 
-_CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "renewals_cache.json")
-
-
-def _load_renewals_cache() -> dict:
-    try:
-        with open(_CACHE_FILE) as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def _save_renewals_cache(cache: dict):
-    os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
-    with open(_CACHE_FILE, "w") as f:
-        json.dump(cache, f)
-
 
 def _get_new_subscribers_today(d: str) -> int:
-    """Первичные подписки за дату d (первая оплата юзера, не минуты, не autopay)."""
+    """Первичные подписки за дату d (первая оплата юзера, не минуты, не autopay).
+
+    Возвраты не учитываются (см. _get_payment_breakdown_today).
+    """
     return fetch_one(f"""
         SELECT COUNT(*)
         FROM payment_history ph
@@ -43,51 +28,103 @@ def _get_new_subscribers_today(d: str) -> int:
             SELECT user_id, MIN(id) AS first_id
             FROM payment_history
             WHERE status = 'succeeded'
+              AND refunded_at IS NULL
               AND plan_name != 'Дополнительные минуты'
               AND is_autopay = 0
             GROUP BY user_id
         ) fp ON fp.user_id = ph.user_id AND fp.first_id = ph.id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND ph.status = 'succeeded'
+          AND ph.refunded_at IS NULL
           AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = '{d}'
     """) or 0
 
 
-def _get_actual_renewals_today(d: str) -> int:
-    """Фактические autopay-списания за дату d."""
-    return fetch_one(f"""
-        SELECT COUNT(*)
-        FROM payment_history ph
-        JOIN users u ON u.id = ph.user_id
-        WHERE COALESCE(u.is_test, '0') != '1'
-          AND ph.status = 'succeeded'
-          AND ph.is_autopay = 1
-          AND ph.plan_name != 'Дополнительные минуты'
-          AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = '{d}'
-    """) or 0
+def _get_autopays_for_day(d: str) -> dict:
+    """Автопродления за дату d — 1:1 методика дашборда DataLens (датасет «Autopays»,
+    вкладка Cohort-Payments). Возвращает:
+      plan_total  — ожидаемые списания (все запланированные продления этого дня),
+      plan_auto   — из них с включённым автопродлением,
+      fact_paid   — фактически прошедшие (нашлась оплата в ±2 дня от плана),
+      conversion  — fact_paid/plan_total, %.
 
+    ВАЖНО: расписание НЕ берётся из active_subscriptions.end_date (оно уже сдвинуто
+    вперёд у продлившихся, поэтому наивный запрос давал заниженные/неверные цифры).
+    Дашборд восстанавливает график из payment_history + 1 месяц (monthly) + orphan-
+    autopay, плюс будущие active_subscriptions (для сегодня даёт 0 — там end_date
+    строго > today). Именно поэтому эти числа совпадают с бордом «Autopays user».
 
-def _get_expected_renewals_today(d: str) -> int:
-    """Ожидаемые списания за дату d — фиксируется при первом запросе дня (файловый кэш)."""
-    cache = _load_renewals_cache()
-    if d in cache:
-        return cache[d]
-    pending = fetch_one(f"""
-        SELECT COUNT(*)
-        FROM active_subscriptions a
-        JOIN users u ON u.id = a.user_id
-        WHERE COALESCE(u.is_test, '0') != '1'
-          AND DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) = '{d}'
-    """) or 0
-    actual = _get_actual_renewals_today(d)
-    count = pending + actual
-    cache[d] = count
-    _save_renewals_cache(cache)
-    return count
+    Возвращённые оплаты (refunded_at IS NOT NULL) не создают плана продления и не
+    считаются фактическим списанием — как в датасете «Autopays» дашборда.
+    """
+    row = fetch_df(f"""
+        SELECT
+            COALESCE(SUM(plan_count), 0)                            AS plan_total,
+            COALESCE(SUM(plan_auto), 0)                             AS plan_auto,
+            COALESCE(SUM(fact_count), 0)                            AS fact_paid,
+            ROUND(SUM(fact_count) / NULLIF(SUM(plan_count), 0) * 100, 1) AS conversion
+        FROM (
+            /* 1) Будущие: active_subscriptions (для today = 0, end_date строго > today) */
+            SELECT DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) AS day, 1 AS plan_count,
+                CASE WHEN a.auto_renewal = 1 THEN 1 ELSE 0 END AS plan_auto, 0 AS fact_count
+            FROM active_subscriptions a JOIN users u ON u.id = a.user_id
+            WHERE COALESCE(u.is_test, '0') != '1'
+              AND DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) > DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+
+            UNION ALL
+
+            /* 2) Прошлые: оплата + 1 месяц (только monthly) */
+            SELECT DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')) AS day, 1 AS plan_count,
+                MAX(CASE WHEN COALESCE(a.auto_renewal, 0) = 1 THEN 1 ELSE 0 END) AS plan_auto,
+                MAX(CASE WHEN ph2.id IS NOT NULL THEN 1 ELSE 0 END) AS fact_count
+            FROM payment_history ph JOIN users u ON u.id = ph.user_id
+            LEFT JOIN active_subscriptions a ON a.user_id = ph.user_id
+            LEFT JOIN payment_history ph2 ON ph2.user_id = ph.user_id AND ph2.id != ph.id
+                AND ph2.status = 'succeeded' AND ph2.refunded_at IS NULL
+                AND ph2.plan_name != 'Дополнительные минуты'
+                AND DATE(CONVERT_TZ(ph2.created_at, '+00:00', '+03:00'))
+                    BETWEEN DATE_SUB(DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')), INTERVAL 2 DAY)
+                        AND DATE_ADD(DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')), INTERVAL 2 DAY)
+            WHERE ph.status = 'succeeded' AND ph.refunded_at IS NULL
+              AND ph.plan_name != 'Дополнительные минуты'
+              AND COALESCE(u.is_test, '0') != '1' AND COALESCE(a.subscription_type, 'monthly') != 'yearly'
+              AND DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')) <= DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
+            GROUP BY ph.id, ph.user_id, DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00'))
+
+            UNION ALL
+
+            /* 3) Orphan autopay (списание есть, но плана под него нет) */
+            SELECT DATE(CONVERT_TZ(ap.created_at, '+00:00', '+03:00')) AS day, 1 AS plan_count, 1 AS plan_auto, 1 AS fact_count
+            FROM payment_history ap JOIN users u ON u.id = ap.user_id
+            WHERE ap.status = 'succeeded' AND ap.refunded_at IS NULL
+              AND ap.plan_name != 'Дополнительные минуты' AND ap.is_autopay = 1
+              AND COALESCE(u.is_test, '0') != '1'
+              AND NOT EXISTS (SELECT 1 FROM payment_history prev WHERE prev.user_id = ap.user_id AND prev.id != ap.id
+                  AND prev.status = 'succeeded' AND prev.refunded_at IS NULL
+                  AND prev.plan_name != 'Дополнительные минуты'
+                  AND DATE(CONVERT_TZ(ap.created_at, '+00:00', '+03:00'))
+                      BETWEEN DATE_SUB(DATE(CONVERT_TZ(DATE_ADD(prev.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')), INTERVAL 2 DAY)
+                          AND DATE_ADD(DATE(CONVERT_TZ(DATE_ADD(prev.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')), INTERVAL 2 DAY))
+        ) src
+        WHERE day = '{d}'
+    """)
+    r = row.iloc[0]
+    return {
+        "plan_total": int(r["plan_total"] or 0),
+        "plan_auto": int(r["plan_auto"] or 0),
+        "fact_paid": int(r["fact_paid"] or 0),
+        "conversion": float(r["conversion"] or 0),
+    }
 
 
 def _get_payment_breakdown_today(d: str) -> dict:
-    """Разбивка оплат: первичные / повторные / минуты за дату d."""
+    """Разбивка оплат: первичные / повторные / минуты за дату d — НЕТТО, без возвратов.
+
+    Возврат в БД = `payment_history.refunded_at IS NOT NULL` (status при этом остаётся
+    'succeeded', поэтому фильтра по статусу мало). Правило нетто — как в датасетах
+    дашборда DataLens (knowledge/datalens/, data/datalens-refunds/*.sql): возвращённая
+    оплата исчезает из дня, в котором прошла.
+    """
     df = fetch_df(f"""
         SELECT
             CASE
@@ -104,12 +141,14 @@ def _get_payment_breakdown_today(d: str) -> dict:
             SELECT user_id, MIN(id) AS first_id
             FROM payment_history
             WHERE status = 'succeeded'
+              AND refunded_at IS NULL
               AND plan_name != 'Дополнительные минуты'
               AND is_autopay = 0
             GROUP BY user_id
         ) fp ON fp.user_id = ph.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND ph.status = 'succeeded'
+          AND ph.refunded_at IS NULL
           AND DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) = '{d}'
         GROUP BY ptype
     """)
@@ -174,10 +213,11 @@ def build_hourly_message() -> str:
     new_subs = _get_new_subscribers_today(d)
     conv_new = round(new_subs / registrations * 100, 1) if registrations > 0 else 0.0
 
-    # СТАРЫЕ ПОЛЬЗОВАТЕЛИ
-    expected = _get_expected_renewals_today(d)
-    actual = _get_actual_renewals_today(d)
-    conv_renew = round(actual / expected * 100, 1) if expected > 0 else 0.0
+    # СТАРЫЕ ПОЛЬЗОВАТЕЛИ (автопродления — методика дашборда DataLens «Autopays»)
+    ap = _get_autopays_for_day(d)
+    expected = ap["plan_total"]
+    actual = ap["fact_paid"]
+    conv_renew = ap["conversion"]
 
     # ФИНАНСЫ
     pay = _get_payment_breakdown_today(d)

@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import telegram
-from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_API_BASE
 from anomaly.detector import check_all_metrics
 from ai_agent.claude import generate_hypotheses
 from metrics.users import (
@@ -72,7 +72,7 @@ async def send_daily_report():
     msk = ZoneInfo("Europe/Moscow")
     today = datetime.now(msk).strftime("%d.%m.%Y")
 
-    bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
+    bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN, base_url=TELEGRAM_API_BASE)
     metrics = build_metrics_summary()
     anomalies = check_all_metrics()
 

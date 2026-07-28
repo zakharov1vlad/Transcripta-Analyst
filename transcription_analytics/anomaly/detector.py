@@ -63,6 +63,7 @@ def check_all_metrics() -> List[Dict]:
             SELECT DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) as date, SUM(ph.amount) as val
             FROM payment_history ph JOIN users u ON u.id = ph.user_id
             WHERE COALESCE(u.is_test, '0') != '1' AND ph.status = 'succeeded'
+            AND ph.refunded_at IS NULL
             AND ph.created_at >= DATE_SUB(DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')), INTERVAL 30 DAY)
             GROUP BY DATE(CONVERT_TZ(ph.created_at, '+00:00', '+03:00')) ORDER BY date
         """)
