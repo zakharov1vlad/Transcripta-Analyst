@@ -56,6 +56,14 @@ def _get_autopays_for_day(d: str) -> dict:
 
     Возвращённые оплаты (refunded_at IS NOT NULL) не создают плана продления и не
     считаются фактическим списанием — как в датасете «Autopays» дашборда.
+
+    ⚠️ Ветка 1 (будущие active_subscriptions) считает только ПЛАТНЫЕ подписки:
+    `a.plan_name NOT IN ('Бесплатный','Гостевой')`. С переходом на биллинг
+    monthly_refill (снятие стены регистрации, ~27.07.2026) бесплатным юзерам стали
+    писать active_subscriptions с будущим end_date → без фильтра ветка 1 раздувала
+    «ожидаемые списания» на будущие дни до 400-650/день (21 900+ строк 'Бесплатный',
+    auto_renewal=0, цена 0). Списание = только с платного тарифа. Фикс синхронен с
+    датасетами DataLens «Autopays»/«Autopays user» (2026-07-31).
     """
     row = fetch_df(f"""
         SELECT
@@ -64,11 +72,13 @@ def _get_autopays_for_day(d: str) -> dict:
             COALESCE(SUM(fact_count), 0)                            AS fact_paid,
             ROUND(SUM(fact_count) / NULLIF(SUM(plan_count), 0) * 100, 1) AS conversion
         FROM (
-            /* 1) Будущие: active_subscriptions (для today = 0, end_date строго > today) */
+            /* 1) Будущие: active_subscriptions (для today = 0, end_date строго > today).
+               Только платные тарифы — иначе бесплатные (monthly_refill) раздувают план. */
             SELECT DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) AS day, 1 AS plan_count,
                 CASE WHEN a.auto_renewal = 1 THEN 1 ELSE 0 END AS plan_auto, 0 AS fact_count
             FROM active_subscriptions a JOIN users u ON u.id = a.user_id
             WHERE COALESCE(u.is_test, '0') != '1'
+              AND a.plan_name NOT IN ('Бесплатный', 'Гостевой')
               AND DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) > DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
 
             UNION ALL
