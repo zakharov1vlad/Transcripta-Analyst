@@ -1,8 +1,10 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import telegram
+from telegram.request import HTTPXRequest
 from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from db.queries import fetch_one, fetch_df
 from metrics.users import get_verified_registrations_today, get_dau_today, get_total_users, get_active_subscribers
@@ -13,6 +15,13 @@ from metrics.product import (
     get_chat_messages_today,
 )
 from metrics.direct import get_direct_spend_today
+
+logger = logging.getLogger(__name__)
+
+# Одна неудачная отправка = пропущенный час (ретраев не было до 04.08.2026).
+# За 21.05–04.08 так потерялось 10 часов: сеть/DNS на VPS, лежащая БД, таймауты Telegram.
+SEND_ATTEMPTS = 3
+SEND_RETRY_DELAYS = (5, 20)  # пауза перед 2-й и 3-й попыткой, сек
 
 
 def _get_new_subscribers_today(d: str) -> int:
@@ -286,13 +295,39 @@ def build_hourly_message() -> str:
 
 
 async def send_hourly_report():
-    bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
-    msg = build_hourly_message()
-    await bot.send_message(
-        chat_id=TELEGRAM_CHAT_ID,
-        text=msg,
-        parse_mode="Markdown"
+    # Дефолтный read_timeout PTB — 5 с, этого мало: 04.08 отправка оборвалась на 8.8 с.
+    bot = telegram.Bot(
+        token=TELEGRAM_BOT_TOKEN,
+        request=HTTPXRequest(
+            connect_timeout=10.0,
+            read_timeout=30.0,
+            write_timeout=30.0,
+            pool_timeout=10.0,
+        ),
     )
+
+    msg = None
+    for attempt in range(1, SEND_ATTEMPTS + 1):
+        try:
+            if msg is None:  # собранное сообщение переиспользуем — БД не дёргаем повторно
+                msg = build_hourly_message()
+            await bot.send_message(
+                chat_id=TELEGRAM_CHAT_ID,
+                text=msg,
+                parse_mode="Markdown"
+            )
+            if attempt > 1:
+                logger.info(f"Hourly report sent on attempt {attempt}/{SEND_ATTEMPTS}")
+            return
+        except Exception as e:
+            if attempt == SEND_ATTEMPTS:
+                raise
+            delay = SEND_RETRY_DELAYS[attempt - 1]
+            logger.warning(
+                f"Hourly report attempt {attempt}/{SEND_ATTEMPTS} failed: "
+                f"{type(e).__name__}: {e}; retry in {delay}s"
+            )
+            await asyncio.sleep(delay)
 
 
 def run():
