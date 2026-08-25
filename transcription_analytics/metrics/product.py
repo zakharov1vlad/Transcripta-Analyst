@@ -35,24 +35,60 @@ def get_transcriptions_hours_today(date_str: str = None) -> float:
 def get_transcriptions_minutes_today() -> float:
     return get_transcriptions_hours_today() * 60
 
+# Дефолтный отчёт, который продукт генерирует САМ под каждую новую транскрибацию
+# (стиль «Краткое содержание»). Пользователь его не заказывал — в продуктовых метриках
+# такие строки не считаем, иначе «AI-отчёты» = просто число транскрипций.
+AUTO_REPORT_STYLE_KEY = 'summary'
+
+# Аналогично в AI-чате: первое сообщение под каждую транскрибацию задаёт сам продукт.
+AUTO_CHAT_MESSAGE = 'Сколько спикеров на записи?'
+
+
 def get_ai_reports_today(date_str: str = None) -> int:
-    """AI-отчёты за дату date_str (МСК), по умолчанию — сегодня."""
+    """AI-отчёты, СГЕНЕРИРОВАННЫЕ ПОЛЬЗОВАТЕЛЕМ, за дату date_str (МСК).
+
+    Из подсчёта исключён дефолтный отчёт «Краткое содержание» (style_key='summary'),
+    который бэкенд создаёт автоматически под каждую новую транскрибацию: за 14 дней
+    таких 13 658 из 13 727 строк, ровно по одному на транскрибацию, 94% — в первые
+    5 минут после её создания. Исключаем только ПЕРВЫЙ 'summary' по транскрибации:
+    если пользователь пересоберёт краткое содержание руками, это уже его действие
+    и оно посчитается.
+    """
     d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
     return fetch_one(f"""
         SELECT COUNT(*) FROM ai_reports ar
         JOIN users u ON u.id = ar.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND DATE(CONVERT_TZ(ar.created_at, '+00:00', '+03:00')) = {d}
+          AND NOT (
+                ar.style_key = '{AUTO_REPORT_STYLE_KEY}'
+                AND ar.id = (SELECT MIN(a2.id) FROM ai_reports a2
+                              WHERE a2.transcription_id = ar.transcription_id
+                                AND a2.style_key = '{AUTO_REPORT_STYLE_KEY}')
+          )
     """) or 0
 
 def get_chat_messages_today(date_str: str = None) -> int:
-    """Сообщений в AI-чат за дату date_str (МСК), по умолчанию — сегодня."""
+    """Сообщения в AI-чат, НАПИСАННЫЕ ПОЛЬЗОВАТЕЛЕМ, за дату date_str (МСК).
+
+    Из подсчёта исключён автозапрос «Сколько спикеров на записи?», который продукт
+    отправляет сам под каждую новую транскрибацию (за 14 дней 14 402 из ~14 500
+    сообщений, ровно по одному на транскрибацию). Исключается только ПЕРВОЕ такое
+    сообщение по транскрибации — если пользователь задаст тот же вопрос сам, оно
+    посчитается.
+    """
     d = f"'{date_str}'" if date_str else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
     return fetch_one(f"""
         SELECT COUNT(*) FROM chat_history ch
         JOIN users u ON u.id = ch.user_id
         WHERE COALESCE(u.is_test, '0') != '1'
           AND DATE(CONVERT_TZ(ch.created_at, '+00:00', '+03:00')) = {d}
+          AND NOT (
+                ch.message = '{AUTO_CHAT_MESSAGE}'
+                AND ch.id = (SELECT MIN(c2.id) FROM chat_history c2
+                              WHERE c2.transcription_id = ch.transcription_id
+                                AND c2.message = '{AUTO_CHAT_MESSAGE}')
+          )
     """) or 0
 
 def get_total_transcriptions() -> int:

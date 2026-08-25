@@ -7,7 +7,8 @@ import telegram
 from telegram.request import HTTPXRequest
 from config.settings import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from db.queries import fetch_one, fetch_df
-from metrics.users import get_verified_registrations_today, get_dau_today, get_total_users, get_active_subscribers
+from metrics.users import get_activations_today, get_dau_today, get_total_users, get_active_subscribers
+from metrics.international import get_intl_payments_today, format_intl_payment
 from metrics.product import (
     get_transcriptions_today,
     get_transcriptions_hours_today,
@@ -54,6 +55,8 @@ def _get_autopays_for_day(d: str) -> dict:
     вкладка Cohort-Payments). Возвращает:
       plan_total  — ожидаемые списания (все запланированные продления этого дня),
       plan_auto   — из них с включённым автопродлением,
+      plan_amount — сумма ожидаемых списаний, ₽ (цена тарифа из `plans` по `users.plan_id`,
+                    годовая/месячная по subscription_type; фолбэк — сумма прошлой оплаты),
       fact_paid   — фактически прошедшие (нашлась оплата в ±2 дня от плана),
       conversion  — fact_paid/plan_total, %.
 
@@ -78,14 +81,19 @@ def _get_autopays_for_day(d: str) -> dict:
         SELECT
             COALESCE(SUM(plan_count), 0)                            AS plan_total,
             COALESCE(SUM(plan_auto), 0)                             AS plan_auto,
+            COALESCE(SUM(plan_amount_total), 0)                     AS plan_amount_total,
             COALESCE(SUM(fact_count), 0)                            AS fact_paid,
             ROUND(SUM(fact_count) / NULLIF(SUM(plan_count), 0) * 100, 1) AS conversion
         FROM (
             /* 1) Будущие: active_subscriptions (для today = 0, end_date строго > today).
                Только платные тарифы — иначе бесплатные (monthly_refill) раздувают план. */
             SELECT DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) AS day, 1 AS plan_count,
-                CASE WHEN a.auto_renewal = 1 THEN 1 ELSE 0 END AS plan_auto, 0 AS fact_count
+                CASE WHEN a.auto_renewal = 1 THEN 1 ELSE 0 END AS plan_auto,
+                COALESCE(CASE WHEN u.subscription_type = 'yearly' THEN pl.yearly_price
+                              ELSE pl.monthly_price END, 0) AS plan_amount_total,
+                0 AS fact_count
             FROM active_subscriptions a JOIN users u ON u.id = a.user_id
+            LEFT JOIN plans pl ON pl.id = u.plan_id
             WHERE COALESCE(u.is_test, '0') != '1'
               AND a.plan_name NOT IN ('Бесплатный', 'Гостевой')
               AND DATE(CONVERT_TZ(a.end_date, '+00:00', '+03:00')) > DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))
@@ -95,8 +103,10 @@ def _get_autopays_for_day(d: str) -> dict:
             /* 2) Прошлые: оплата + 1 месяц (только monthly) */
             SELECT DATE(CONVERT_TZ(DATE_ADD(ph.created_at, INTERVAL 1 MONTH), '+00:00', '+03:00')) AS day, 1 AS plan_count,
                 MAX(CASE WHEN COALESCE(a.auto_renewal, 0) = 1 THEN 1 ELSE 0 END) AS plan_auto,
+                MAX(COALESCE(pl.monthly_price, ph.amount)) AS plan_amount_total,
                 MAX(CASE WHEN ph2.id IS NOT NULL THEN 1 ELSE 0 END) AS fact_count
             FROM payment_history ph JOIN users u ON u.id = ph.user_id
+            LEFT JOIN plans pl ON pl.id = u.plan_id
             LEFT JOIN active_subscriptions a ON a.user_id = ph.user_id
             LEFT JOIN payment_history ph2 ON ph2.user_id = ph.user_id AND ph2.id != ph.id
                 AND ph2.status = 'succeeded' AND ph2.refunded_at IS NULL
@@ -113,8 +123,12 @@ def _get_autopays_for_day(d: str) -> dict:
             UNION ALL
 
             /* 3) Orphan autopay (списание есть, но плана под него нет) */
-            SELECT DATE(CONVERT_TZ(ap.created_at, '+00:00', '+03:00')) AS day, 1 AS plan_count, 1 AS plan_auto, 1 AS fact_count
+            SELECT DATE(CONVERT_TZ(ap.created_at, '+00:00', '+03:00')) AS day, 1 AS plan_count, 1 AS plan_auto,
+                COALESCE(CASE WHEN u.subscription_type = 'yearly' THEN pl.yearly_price
+                              ELSE pl.monthly_price END, ap.amount) AS plan_amount_total,
+                1 AS fact_count
             FROM payment_history ap JOIN users u ON u.id = ap.user_id
+            LEFT JOIN plans pl ON pl.id = u.plan_id
             WHERE ap.status = 'succeeded' AND ap.refunded_at IS NULL
               AND ap.plan_name != 'Дополнительные минуты' AND ap.is_autopay = 1
               AND COALESCE(u.is_test, '0') != '1'
@@ -131,6 +145,7 @@ def _get_autopays_for_day(d: str) -> dict:
     return {
         "plan_total": int(r["plan_total"] or 0),
         "plan_auto": int(r["plan_auto"] or 0),
+        "plan_amount": float(r["plan_amount_total"] or 0),
         "fact_paid": int(r["fact_paid"] or 0),
         "conversion": float(r["conversion"] or 0),
     }
@@ -226,15 +241,23 @@ def build_hourly_message() -> str:
         label = now.strftime("%d.%m.%Y %H:%M")
 
     # НОВЫЕ ПОЛЬЗОВАТЕЛИ
+    # «Активации» (не «регистрации»): со снятия стены регистрации 27.07.2026 строка в
+    # `users` создаётся при любом из трёх входов — регистрация / первая транскрибация
+    # гостя / начало оплаты гостем. Разбивка — по канону entry_type СТО.
+    # В отчёте разбивка идёт БЕЗ подписей, голыми числами в скобках; порядок закреплён
+    # владельцем 25.08.2026 и менять его нельзя:
+    #   (транскрибация / регистрация / начало оплаты / прочее).
     total_users = get_total_users()
     active_subs = get_active_subscribers()
-    registrations = get_verified_registrations_today(d)
+    act = get_activations_today(d)
+    activations = act["total"]
     new_subs = _get_new_subscribers_today(d)
-    conv_new = round(new_subs / registrations * 100, 1) if registrations > 0 else 0.0
+    conv_new = round(new_subs / activations * 100, 1) if activations > 0 else 0.0
 
     # СТАРЫЕ ПОЛЬЗОВАТЕЛИ (автопродления — методика дашборда DataLens «Autopays»)
     ap = _get_autopays_for_day(d)
     expected = ap["plan_total"]
+    expected_amount = ap["plan_amount"]
     actual = ap["fact_paid"]
     conv_renew = ap["conversion"]
 
@@ -254,6 +277,13 @@ def build_hourly_message() -> str:
     ai_reports = get_ai_reports_today(d)
     chat_msgs = get_chat_messages_today(d)
 
+    # МЕЖДУНАРОДКА (Scriptario / Paddle) — деньги без налога, страна = рынок сайта.
+    # Оплат не было → под заголовком пусто (решение владельца 25.08.2026).
+    intl_rows = get_intl_payments_today(d)
+    intl_block = "🌍 *МЕЖДУНАРОДКА*"
+    if intl_rows:
+        intl_block += "\n" + "\n".join(format_intl_payment(row) for row in intl_rows)
+
     # ОЦЕНКИ
     ratings = _get_ratings_today(d)
 
@@ -262,12 +292,12 @@ def build_hourly_message() -> str:
 👥 *НОВЫЕ ПОЛЬЗОВАТЕЛИ*
 • Всего юзеров: {total_users:,}
 • Активных подписок: {active_subs:,}
-• Регистрации сегодня: {registrations}
+• Активации сегодня: {activations} ({act['transcription']} / {act['registration']} / {act['payment']} / {act['other']})
 • Новые подписки сегодня: {new_subs}
-• Конверсия рег → оплата: {conv_new:.1f}%
+• Конверсия активация → оплата: {conv_new:.1f}%
 
 🔄 *СТАРЫЕ ПОЛЬЗОВАТЕЛИ*
-• Ожидаемые списания: {expected}
+• Ожидаемые списания: {expected} ({expected_amount:,.0f} ₽)
 • Фактические списания: {actual}
 • Конверсия в списание: {conv_renew:.1f}%
 
@@ -279,6 +309,8 @@ def build_hourly_message() -> str:
 • Расход Директ: {spend:,.0f} ₽
 • CAC: {cac:,.0f} ₽
 • Доход: {income:+,.0f} ₽
+
+{intl_block}
 
 🎙 *ПРОДУКТ*
 • DAU всего: {dau_all}

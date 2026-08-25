@@ -158,3 +158,69 @@ def get_subscription_type_split() -> pd.DataFrame:
         WHERE COALESCE(is_test, '0') != '1' AND subscription_plan IN {_PAID_SQL}
         GROUP BY subscription_type
     """)
+
+
+def get_activations_today(date_str: str = None) -> dict:
+    """Активации за дату date_str (МСК) — ВСЕ нетестовые строки `users`, созданные в этот день.
+
+    Со снятия стены регистрации (27.07.2026) строка в `users` создаётся при любом из
+    трёх событий: (1) регистрация, (2) первая транскрибация гостя, (3) начало оплаты
+    гостем. Поэтому «регистрации» ≠ строки таблицы, и метрика дня называется
+    «Активации» (тот же канон, что «Активированные юзеры» в ежедневном отчёте
+    Продукт+Финансы, build/gen_product_finance.py в Marketing Assistant).
+
+    Разбивка = канон `entry_type` СТО (04.08.2026, живёт в датасете DataLens Users):
+    смотрим, какое событие произошло РАНЬШЕ —
+      registered_at ≤ min(первая транскрипция, первый платёж любого статуса) → «Регистрация»;
+      платёж строго раньше обоих                                             → «Начало оплаты»;
+      есть транскрипция                                                      → «Транскрибация»;
+      ничего из этого                                                        → «Не определено»
+      (брошенные загрузки: строка создана, транскрипции так и не появилось).
+
+    Возвращает {'total', 'transcription', 'registration', 'payment', 'other'}.
+    """
+    d = date_str or None
+    day = f"'{d}'" if d else "DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00'))"
+    # Диапазон по UTC — чтобы MySQL взял индекс по created_at (МСК-сутки = UTC [d-3ч, d+21ч)).
+    df = fetch_df(f"""
+        SELECT
+            COUNT(*)                                          AS total,
+            SUM(entry_type = 'transcription')                 AS transcription,
+            SUM(entry_type = 'registration')                  AS registration,
+            SUM(entry_type = 'payment')                       AS payment,
+            SUM(entry_type = 'other')                         AS other
+        FROM (
+            SELECT
+                CASE
+                    WHEN u.registered_at IS NOT NULL
+                         AND (first_tr  IS NULL OR u.registered_at <= first_tr)
+                         AND (first_pay IS NULL OR u.registered_at <= first_pay)
+                        THEN 'registration'
+                    WHEN first_pay IS NOT NULL
+                         AND (first_tr IS NULL OR first_pay < first_tr)
+                         AND (u.registered_at IS NULL OR first_pay < u.registered_at)
+                        THEN 'payment'
+                    WHEN first_tr IS NOT NULL
+                        THEN 'transcription'
+                    ELSE 'other'
+                END AS entry_type
+            FROM (
+                SELECT u.id, u.registered_at,
+                       (SELECT MIN(t.created_at)  FROM transcriptions  t WHERE t.user_id  = u.id) AS first_tr,
+                       (SELECT MIN(ph.created_at) FROM payment_history ph WHERE ph.user_id = u.id) AS first_pay
+                FROM users u
+                WHERE COALESCE(u.is_test, '0') != '1'
+                  AND u.created_at >= DATE_SUB({day}, INTERVAL 3 HOUR)
+                  AND u.created_at <  DATE_ADD({day}, INTERVAL 21 HOUR)
+                  AND DATE(CONVERT_TZ(u.created_at, '+00:00', '+03:00')) = {day}
+            ) u
+        ) x
+    """)
+    r = df.iloc[0]
+    return {
+        "total":         int(r["total"] or 0),
+        "transcription": int(r["transcription"] or 0),
+        "registration":  int(r["registration"] or 0),
+        "payment":       int(r["payment"] or 0),
+        "other":         int(r["other"] or 0),
+    }
